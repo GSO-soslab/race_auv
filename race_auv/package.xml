@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>race_auv</name>
+  <version>0.0.0</version>
+  <description>The race_auv package</description>
+
+  <maintainer email="mzhou@uri.edu">Mingxi ZHou</maintainer>
+  <author email="mzhou@uri.edu">Mingxi Zhou</author>
+
+
+  <license>GPLv3</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <export>
+
+  </export>
+</package>
