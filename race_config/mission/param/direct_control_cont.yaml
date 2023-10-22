@@ -12,9 +12,9 @@ local_link: race/cg_link
 ########################################
 
 # unit: meter
-max_x: 5
-max_y: 5
-max_z: 5
+max_x: 10
+max_y: 10
+max_z: 10
 
 # unit: radians 
 max_roll: 1.5707963 
@@ -38,7 +38,7 @@ max_yaw_rate: 4.7
 # position
 desired_x: 0.0
 desired_y: 0.0
-desired_z: 0.0
+desired_z: 2.0
 
 # orientation (0.4 rad = 23 degree)
 desired_roll: 0.0 
