@@ -13,7 +13,7 @@
 
     <link name="cg_link"/>
     <joint name="cg_joint" type="fixed">
-        <origin xyz="0.05 0.0 0.0" rpy="3.1415926 0.0 0.0"/>
+        <origin xyz="0.1 0.0 0.0" rpy="3.1415926 0.0 0.0"/>
         <parent link="base_link"/>
         <child link="cg_link"/>
     </joint>
@@ -71,21 +71,21 @@
     
     <link name="heave_bow_thruster_link"/>
     <joint name="heave_bow_thruster_joint" type="fixed">
-        <origin xyz="0.38065 0.0 0.07535" rpy="3.1415926 -1.571 0.0"/>
+        <origin xyz="0.38065 0.0 0.07535" rpy="3.1415926 1.571 0.0"/>
         <parent link="base_link"/>
         <child link="heave_bow_thruster_link"/>
     </joint>
 
     <link name="heave_stern_port_thruster_link"/>
     <joint name="heave_stern_port_thruster_joint" type="fixed">
-        <origin xyz="-0.104 -0.1034 0.07535" rpy="-1.571 -1.571 0.0"/>
+        <origin xyz="-0.104 -0.1034 0.07535" rpy="-1.571 1.571 0.0"/>
         <parent link="base_link"/>
         <child link="heave_stern_port_thruster_link"/>
     </joint>
 
     <link name="heave_stern_stdb_thruster_link"/>
     <joint name="heave_stern_stdb_thruster_joint" type="fixed">
-        <origin xyz="-0.104 0.1034 0.07535" rpy="1.571 -1.571 0.0"/>
+        <origin xyz="-0.104 0.1034 0.07535" rpy="1.571 1.571 0.0"/>
         <parent link="base_link"/>
         <child link="heave_stern_stdb_thruster_link"/>
     </joint>
@@ -93,14 +93,14 @@
 
     <link name="surge_port_thruster_link"/>
     <joint name="surge_port_thruster_joint" type="fixed">
-        <origin xyz="-0.404 0.125 0.05485" rpy="1.571 0.0 0.52"/>
+        <origin xyz="-0.404 0.125 0.05485" rpy="1.571 -0.8 0.52"/>
         <parent link="base_link"/>
         <child link="surge_port_thruster_link"/>
     </joint>
 
     <link name="surge_stdb_thruster_link"/>
     <joint name="surge_stdb_thruster_joint" type="fixed">
-        <origin xyz="-0.404 -0.125 0.05485" rpy="-1.571 0.0 -0.52"/>
+        <origin xyz="-0.404 -0.125 0.05485" rpy="-1.571 -0.8 -0.52"/>
         <parent link="base_link"/>
         <child link="surge_stdb_thruster_link"/>
     </joint>

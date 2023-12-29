@@ -8,19 +8,11 @@ finite_state_machine:
     mode: idle
     initial: true
     transitions:
-      - survey_local
-      - survey_global
+      - survey_3d
       - kill
-      - direct
-      - test
+      - direct_control
 
-  - name: survey_local
-    mode: flight
-    transitions:
-      - start
-      - kill
-
-  - name: survey_global
+  - name: survey_3d
     mode: flight
     transitions:
       - start
@@ -31,55 +23,27 @@ finite_state_machine:
     transition:
       - start
 
-  - name: test
-    mode: hold_depth
-    transitions:
-      - start
-      - kill
-
-  - name: direct
-    mode: hold_5dof
+  - name: direct_control
+    mode: hold_dof
     transitions:
       - start
       - kill
 
 behaviors:
-  - name: path_local
-    plugin: helm::PathFollowingI
+  - name: path_3d
+    plugin: helm::PathFollowing3D
     states:
-      - { name: survey_local, priority: 1 }
-
-  - name: path_global
-    plugin: helm::PathFollowingI
-    states:
-      - { name: survey_global, priority: 1 }
-
-  - name: depth_tracking
-    plugin: helm::DepthTracking
-    states:
-      - { name: survey_local, priority: 1 }
-      - { name: survey_global, priority: 1 }
+      - { name: survey_3d, priority: 1 }
 
   - name: periodic_surfacing
     plugin: helm::PeriodicSurface
     states:
-      - {name: survey_local, priority: 2}
-      - {name: survey_global, priority: 2}
-
-  - name: gps_wpt
-    plugin: helm::GpsWaypoint
-    states:
-      - {name: survey_global, priority: 1}
+      - {name: survey_3d, priority: 2}
 
   - name: direct_control
-    plugin: helm::DirectControl
-    states:
-      - { name: test, priority: 1 }
-
-  - name: direct_control_cont
     plugin: helm::DirectControlCont
     states:
-      - { name: direct, priority: 1 }
+      - { name: direct_control, priority: 1 }
 
   # - name: timer
   #   plugin: helm::Timer

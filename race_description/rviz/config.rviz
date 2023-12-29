@@ -157,7 +157,7 @@ Visualization Manager:
         race/base_link:
           Value: false
         race/cg_link:
-          Value: false
+          Value: true
         race/dvl:
           Value: false
         race/dvl_sf:
@@ -318,7 +318,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 1.4727822542190552
+      Distance: 1.8504385948181152
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -334,9 +334,9 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.215397596359253
+      Pitch: 1.5697963237762451
       Target Frame: alpha/base_link
-      Yaw: 5.81358528137207
+      Yaw: 5.803585052490234
     Saved: ~
 Window Geometry:
   Displays:
