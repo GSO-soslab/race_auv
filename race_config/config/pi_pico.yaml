@@ -1,0 +1,33 @@
+Serial:
+  port: /dev/ttySC3
+  baud: 115200
+  parity: 0
+  databits: 8
+  stopbits: 1
+  timeout: 1000
+
+System:
+  safety_timeout: 3
+  safety_rate: 1
+
+PWM_Control:
+  # vertical-front
+  sway_bow:
+    channel: 0
+    mode: thruster
+    topic: control/thruster/sway_bow
+  # vertical-back
+  surge:
+    channel: 1
+    mode: thruster
+    topic: control/thruster/surge
+  # horizaontal-front
+  heave_bow:
+    channel: 2
+    mode: thruster
+    topic: control/thruster/heave_bow
+  # main
+  heave_stern:
+    channel: 3
+    mode: thruster
+    topic: control/thruster/heave_stern 
