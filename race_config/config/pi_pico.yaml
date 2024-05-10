@@ -1,5 +1,5 @@
 Serial:
-  port: /dev/ttySC3
+  port: /dev/ttyACM0
   baud: 115200
   parity: 0
   databits: 8
@@ -11,23 +11,28 @@ System:
   safety_rate: 1
 
 PWM_Control:
-  # vertical-front
-  sway_bow:
+  heave_bow:
     channel: 0
     mode: thruster
-    topic: control/thruster/sway_bow
-  # vertical-back
-  surge:
+    topic: control/thruster/heave_bow
+  surge_port:
     channel: 1
     mode: thruster
-    topic: control/thruster/surge
-  # horizaontal-front
-  heave_bow:
+    topic: control/thruster/surge_port
+  sway_stern:
     channel: 2
     mode: thruster
-    topic: control/thruster/heave_bow
-  # main
-  heave_stern:
+    topic: control/thruster/sway_stern
+  surge_stdb:
     channel: 3
     mode: thruster
-    topic: control/thruster/heave_stern 
+    topic: control/thruster/surge_stdb
+  heave_port:
+    channel: 4
+    mode: thruster
+    topic: control/thruster/heave_port
+  heave_stdb:
+    channel: 5
+    mode: thruster
+    topic: control/thruster/heave_stdb
+  
