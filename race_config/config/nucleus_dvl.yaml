@@ -1,0 +1,12 @@
+ip: '192.168.2.103'
+
+publish_custom: 'False'
+
+trigger:
+  source: 'INTERNAL'
+
+  freq: '1'
+
+  altimeter: '0'
+
+  current_profile: '0'

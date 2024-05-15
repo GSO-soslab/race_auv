@@ -29,14 +29,19 @@
     </include>  
 
     <!-- Bring up the Bluerobotics Ping360 MSIS sensor -->
-    <include file="$(find race_bringup)/launch/include/bluerobotics_ping360.launch.xml">
+    <!-- <include file="$(find race_bringup)/launch/include/bluerobotics_ping360.launch.xml">
         <arg name="robot_name" value="$(arg robot_name)"/>
-    </include>  
+    </include>   -->
 
     <!-- Bring up the Power Minotor  -->
     <include file="$(find race_bringup)/launch/include/power_monitor.launch.xml">
         <arg name="robot_name" value="$(arg robot_name)"/>
     </include>  
+
+    <!-- Bring up Nucleus DVL -->
+    <include file="$(find race_bringup)/launch/include/nucleus_dvl.launch.xml">
+        <arg name="robot_name" value="$(arg robot_name)"/>
+    </include>
 
     <!-- Bring up Waterlinked DVL -->
     <!-- <include file="$(find race_bringup)/launch/include/waterlinked_dvl.launch.xml">

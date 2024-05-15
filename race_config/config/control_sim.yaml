@@ -1,6 +1,5 @@
 generator_type: tf
 
-# controller_frequency: 20
 controller_frequency: 20
 
 # tf_prefix: alpha_rise
@@ -42,8 +41,8 @@ control_modes:
 thruster_ids:
   - sway_stern
   - heave_bow
-  # - heave_stern_port
-  # - heave_stern_stdb
+  - heave_stern_port
+  - heave_stern_stdb
   - surge_port
   - surge_stdb
 
@@ -51,24 +50,24 @@ thruster_ids:
 control_tf:
   sway_stern: sway_stern_thruster_link
   heave_bow: heave_bow_thruster_link
-  # heave_stern_port: heave_stern_port_thruster_link
-  # heave_stern_stdb: heave_stern_stdb_thruster_link
+  heave_stern_port: heave_stern_port_thruster_link
+  heave_stern_stdb: heave_stern_stdb_thruster_link
   surge_port: surge_port_thruster_link
   surge_stdb: surge_stdb_thruster_link
 
 thruster_command_topics:
   sway_stern: control/thruster/SwayStern
   heave_bow: control/thruster/HeaveBow
-  # heave_stern_port: control/thruster/HeaveSternPort
-  # heave_stern_stdb: control/thruster/HeaveSternStbd
+  heave_stern_port: control/thruster/HeaveSternPort
+  heave_stern_stdb: control/thruster/HeaveSternStbd
   surge_port: control/thruster/SurgePort
   surge_stdb: control/thruster/SurgeStbd
 
 thruster_force_topics:
   sway_stern: control/force/SwayStern
   heave_bow: control/force/HeaveBow
-  # heave_stern_port: control/force/HeaveSternPort
-  # heave_stern_stdb: control/force/HeaveSternStbd
+  heave_stern_port: control/force/HeaveSternPort
+  heave_stern_stdb: control/force/HeaveSternStbd
   surge_port: control/force/SurgePort
   surge_stdb: control/force/SurgeStbd
 
@@ -111,8 +110,8 @@ thruster_force_topics:
 thruster_polynomials:
   sway_stern: [0.06165, 20.32, 9.632, 93.05, -2.856, -74.1]
   heave_bow: [0.06165, 20.32, 9.632, 93.05, -2.856, -74.1]
-  # heave_stern_port: [0.06165, 20.32, 9.632, 93.05, -2.856, -74.1]
-  # heave_stern_stdb: [0.06165, 20.32, 9.632, 93.05, -2.856, -74.1]
+  heave_stern_port: [0.06165, 20.32, 9.632, 93.05, -2.856, -74.1]
+  heave_stern_stdb: [0.06165, 20.32, 9.632, 93.05, -2.856, -74.1]
   surge_port: [0.06165, 20.32, 9.632, 93.05, -2.856, -74.1]
   surge_stdb: [0.06165, 20.32, 9.632, 93.05, -2.856, -74.1]
   
@@ -128,12 +127,12 @@ thruster_limits:
   heave_bow: 
     max: 20
     min: -20
-  # heave_stern_port: 
-  #   max: 20
-  #   min: -20
-  # heave_stern_stdb: 
-  #   max: 20
-  #   min: -20
+  heave_stern_port: 
+    max: 20
+    min: -20
+  heave_stern_stdb: 
+    max: 20
+    min: -20
   surge_port: 
     max: 25
     min: -25
