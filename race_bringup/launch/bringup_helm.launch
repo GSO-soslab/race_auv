@@ -16,11 +16,6 @@
             command="load"
             file="$(find race_config)/mission/config/helm.yaml"/>
 
-        <!--
-            Load all the parameters for the behaviors.
-        -->
-        <rosparam command="load" ns="periodic_surfacing" file="$(find race_config)/mission/param/periodic_surfacing.yaml"/>
-
         <!-- 
             Load path following realted param 
         -->
@@ -35,7 +30,6 @@
         <!-- 
             Load mvp mission behaviors
         -->
-        <rosparam command="load" ns="direct_control" file="$(find race_config)/mission/param/direct_control.yaml"/>
         <rosparam command="load" ns="teleop" file="$(find race_config)/mission/param/teleop.yaml"/>
 
     </node>

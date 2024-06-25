@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+
+<launch>
+    <arg name="robot_name" default="race"/>
+
+    <arg name="is_sim" default="false"/>
+
+        <!-- mvp_control -->
+    <include file="$(find race_bringup)/launch/include/control.launch.xml">
+        <arg name="robot_name" value="$(arg robot_name)"/>
+    </include>
+
+    <!-- heml -->
+    <include file="$(find race_bringup)/launch/bringup_helm.launch">
+        <arg name="robot_name" value="$(arg robot_name)"/>
+    </include>
+
+
+</launch>
