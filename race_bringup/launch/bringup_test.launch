@@ -2,7 +2,7 @@
 
 <launch>
 
-  <arg name="robot_name" default="alpha_rise"/>
+  <arg name="robot_name" default="race"/>
 
 
 

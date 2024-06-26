@@ -17,7 +17,7 @@
     <node ns="$(arg robot_name)" pkg="calib_gyro" type="calibrate_gyro.py" name="gyro_calibrator" output="screen">
     </node>
     <!-- Bring up Xsens AHRS -->
-    <include file="$(find alpha_rise_bringup)/launch/include/xsens_imu.launch.xml">
+    <include file="$(find race_bringup)/launch/include/xsens_imu.launch.xml">
         <arg name="robot_name" value="$(arg robot_name)"/>
     </include> 
 

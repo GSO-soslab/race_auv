@@ -3,8 +3,6 @@
 <launch>
     <arg name="robot_name" default="race"/>
 
-    <arg name="is_sim" default="false"/>
-
         <!-- mvp_control -->
     <include file="$(find race_bringup)/launch/include/control.launch.xml">
         <arg name="robot_name" value="$(arg robot_name)"/>

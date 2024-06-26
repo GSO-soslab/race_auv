@@ -14,25 +14,25 @@ PWM_Control:
   heave_bow:
     channel: 0
     mode: thruster
-    topic: control/thruster/heave_bow
+    topic: control/thruster/HeaveBow
   surge_port:
     channel: 1
     mode: thruster
-    topic: control/thruster/surge_port
+    topic: control/thruster/SurgePort
   sway_stern:
     channel: 2
     mode: thruster
-    topic: control/thruster/sway_stern
+    topic: control/thruster/SwayStern
   surge_stdb:
     channel: 3
     mode: thruster
-    topic: control/thruster/surge_stdb 
+    topic: control/thruster/SurgeStbd 
   heave_port:
     channel: 4
     mode: thruster
-    topic: control/thruster/heave_port
+    topic: control/thruster/HeaveSternPort
   heave_stdb:
     channel: 5
     mode: thruster
-    topic: control/thruster/heave_stdb
+    topic: control/thruster/HeaveSternStbd
   
