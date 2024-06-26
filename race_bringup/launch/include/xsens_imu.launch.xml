@@ -21,6 +21,7 @@
 
     <node ns="$(arg robot_name)" pkg="imu_filter_madgwick" type="imu_filter_node" name="imu_filter_node" output="screen">
         <param name = "world_frame" value="enu"/>
+        <param name = "gain" value = "0.1"/>
         <param name = "mag_bias_x" value="-0.0741"/>
         <param name = "mag_bias_y" value="0.0665"/>
         <param name = "mag_bias_z" value="0.0214"/>

@@ -14,7 +14,7 @@
 
     <node ns="$(arg robot_name)" pkg="nucleus_dvl" type="nucleus_node" name="nucleus_node" output="screen">
       <rosparam command="load" file="$(find race_config)/config/nucleus_dvl.yaml"/>
-      <param name="frame_id" value="$(arg robot_name)/nucleus_dvl"/>
+      <param name="frame_id" value="$(arg robot_name)/dvl"/>
     </node>
 
 </launch>
