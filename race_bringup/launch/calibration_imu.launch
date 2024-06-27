@@ -16,6 +16,14 @@
     <!-- gyro calibrtion  -->
     <node ns="$(arg robot_name)" pkg="calib_gyro" type="calibrate_gyro.py" name="gyro_calibrator" output="screen">
     </node>
+
+    <!-- accel calibrtion  -->
+    <node ns="$(arg robot_name)" pkg="calib_accelerometer" type="calib_accel" name="accl_calibrator" output="screen">
+      <remap from="/imu_input" to="imu/data"/>
+      <param name="max_samples" value="600" />
+      <param name="log" value="true" />
+    </node>
+
     <!-- Bring up Xsens AHRS -->
     <include file="$(find race_bringup)/launch/include/xsens_imu.launch.xml">
         <arg name="robot_name" value="$(arg robot_name)"/>
