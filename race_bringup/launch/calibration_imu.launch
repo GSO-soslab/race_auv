@@ -21,7 +21,7 @@
     <node ns="$(arg robot_name)" pkg="calib_accelerometer" type="calib_accel" name="accl_calibrator" output="screen">
       <remap from="/imu_input" to="imu/data"/>
       <param name="max_samples" value="600" />
-      <param name="log" value="true" />
+      <param name="log" value="false" />
     </node>
 
     <!-- Bring up Xsens AHRS -->
