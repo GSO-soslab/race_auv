@@ -1,21 +1,18 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>race_auv</name>
+  <name>race_auv_description</name>
   <version>0.0.0</version>
-  <description>The race_auv package</description>
-
-  <maintainer email="mzhou@uri.edu">Mingxi ZHou</maintainer>
-  <author email="mzhou@uri.edu">Mingxi Zhou</author>
-  <author email="kyliepasternak@uri.edu">Kylie Pasternak</author>
-
-  <license>GPLv3</license>
+  <description>TODO: Package race_auv_description</description>
+  <maintainer email="mingxi@todo.todo">mingxi</maintainer>
+  <license>TODO: License declaration</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
-
+  <depend>rclcpp</depend>
+  <depend>rviz2</depend>
+  <depend>tf2_ros</depend>
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
-
 
   <export>
     <build_type>ament_cmake</build_type>

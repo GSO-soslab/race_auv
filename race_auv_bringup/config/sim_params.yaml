@@ -1,0 +1,24 @@
+/race_auv/imu_driver_node:
+    ros__parameters:
+      roll_offset: 3.1415926
+      pitch_offset: 0.0
+      yaw_offset: 1.5707
+      roll_reverse: 1.0
+      pitch_reverse: -1.0
+      yaw_reverse: -1.0
+
+/race_auv/thruster_driver_node:
+    ros__parameters:
+      thruster_pub_topic: /race_auv/stonefish/thruster_command
+      thruster_length: 6
+      thruster_sub_topics: [/race_auv/control/thruster/sway_stern, 
+                          /race_auv/control/thruster/heave_bow, 
+                          /race_auv/control/thruster/heave_stern_port, 
+                          /race_auv/control/thruster/heave_stern_stbd,
+                          /race_auv/control/thruster/surge_port,
+                          /race_auv/control/thruster/surge_stbd]
+
+/race_auv/dvl_driver_node:
+    ros__parameters:
+      dvl_in: /race_auv/dvl/stonefish/raw
+      dvl_out: /race_auv/dvl/twist
