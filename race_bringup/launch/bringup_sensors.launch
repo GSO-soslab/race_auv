@@ -24,7 +24,7 @@
     <!-- <include file="$(find race_bringup)/launch/include/gps_nmea.launch.xml">
         <arg name="robot_name" value="$(arg robot_name)"/>
     </include> -->
-    <include file="$(find alpha_rise_bringup)/launch/include/gps_gpsd.launch.xml">
+    <include file="$(find race_bringup)/launch/include/gps_gpsd.launch.xml">
         <arg name="robot_name" value="$(arg robot_name)"/>
     </include>
 

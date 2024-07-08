@@ -25,7 +25,7 @@
         <remap from="accel/filtered" to="accel/filtered/local"/>
 
 
-        <param name="imu0" value="imu/data_filtered"/>
+        <param name="imu0" value="imu/data"/>
         <rosparam param="imu0_config">
         [false, false, false,
          true,   true,  true,
@@ -38,7 +38,7 @@
         <param name="imu0_queue_size" value="100"/>
         <param name="imu0_remove_gravitational_acceleration" value="true"/>
 
-        <param name="twist0" value="dvl/twist"/>
+        <param name="twist0" value="nucleus_node/dv/twist"/>
         <rosparam param="twist0_config">
         [false, false, false,
          false, false, false,
@@ -50,7 +50,7 @@
         <param name="twist0_relative" value="false"/>
         <param name="twist0_queue_size" value="20"/>
 
-        <param name="pose0" value="depth_filtered"/>
+        <param name="pose0" value="depth/odometry"/>
         <rosparam param="pose0_config">
         [false, false,  true,
          false, false, false,
@@ -78,13 +78,12 @@
 
     </node>
 
-    <node ns="$(arg robot_name)" name="depth_filter" pkg="alpha_localization" type="depth_filter_node" output="screen">
-        <param name="frame_id" value="$(arg robot_name)/odom"/>
+    <node ns="$(arg robot_name)" name="depth_filter" pkg="mvp_localization_utilities" type="depth_filter_node" output="screen">
+        <param name="frame_id" value="$(arg robot_name)/world"/>
         <remap from="depth" to="bar30/depth"/>
-        <remap from="depth_filtered" to="depth_filtered"/>
     </node>
 
-    <node ns="$(arg robot_name)" pkg="alpha_localization" type="world_odom_transform_node" name="world_odom_transform_node" output="screen">
+    <node ns="$(arg robot_name)" pkg="mvp_localization_utilities" type="world_odom_transform_node" name="world_odom_transform_node" output="screen">
         <param name = "tf_prefix" value="$(arg robot_name)"/>
         <param name = "mag_declination" value="0.0" />
         <param name = "mag_declination_auto" value="false" />

@@ -30,9 +30,9 @@ PWM_Control:
   heave_port:
     channel: 4
     mode: thruster
-    topic: control/thruster/HeaveSternPort
+    topic: control/thruster/HeaveSternStbd
   heave_stdb:
     channel: 5
     mode: thruster
-    topic: control/thruster/HeaveSternStbd
+    topic: control/thruster/HeaveSternPort
   

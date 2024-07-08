@@ -39,7 +39,7 @@
         <child link="dvl"/>
     </joint>
 
-     <link name="dvl_sf"/>
+    <link name="dvl_sf"/>
     <joint name="dvl_sf_joint" type="fixed">
         <origin xyz="-0.00 0.0 -0.09" rpy="0.0 0.0 0.0"/>
         <parent link="base_link"/>
