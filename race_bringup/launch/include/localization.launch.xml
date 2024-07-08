@@ -78,7 +78,7 @@
 
     </node>
 
-    <node ns="$(arg robot_name)" name="depth_filter" pkg="mvp_localization_utilities" type="depth_filter_node" output="screen">
+    <node ns="$(arg robot_name)" name="depth_odometry_publisher" pkg="mvp_localization_utilities" type="depth_odometry_publisher" output="screen">
         <param name="frame_id" value="$(arg robot_name)/world"/>
         <remap from="depth" to="bar30/depth"/>
     </node>

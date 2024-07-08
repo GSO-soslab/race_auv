@@ -15,8 +15,8 @@
         <arg name="robot_name" value="$(arg robot_name)"/>
     </include>  
 
-    <!-- Bring up Xsens AHRS -->
-    <include file="$(find race_bringup)/launch/include/xsens_imu.launch.xml">
+    <!-- Bring up microstrain AHRS -->
+    <include file="$(find race_bringup)/launch/include/microstrain.launch.xml">
         <arg name="robot_name" value="$(arg robot_name)"/>
     </include>
 

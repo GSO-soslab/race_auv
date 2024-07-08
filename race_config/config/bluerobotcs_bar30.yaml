@@ -6,7 +6,7 @@ sensor:
     bus: 1
 
     # brief: Fluid Density (kg/m^3); fresh: 997.0474; seawater: 1023.6
-    fluid_density: 997.0474
+    fluid_density: 1023.6
 
 system:
     # brief: sensor publish rate
