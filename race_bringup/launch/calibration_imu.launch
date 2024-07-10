@@ -10,7 +10,7 @@
       <param name="max_samples" value="100000" />
       <param name="use_sim_time" value="false" />
       <param name="calibrations_dir" value="$(find calib_magnetometer)/result" />
-      <remap from="/magnetometer" to="imu/mag"/>
+      <remap from="/magnetometer" to="mag"/>
     </node>
 
     <!-- gyro calibrtion  -->

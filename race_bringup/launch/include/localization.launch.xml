@@ -85,8 +85,8 @@
 
     <node ns="$(arg robot_name)" pkg="mvp_localization_utilities" type="world_odom_transform_node" name="world_odom_transform_node" output="screen">
         <param name = "tf_prefix" value="$(arg robot_name)"/>
-        <param name = "mag_declination" value="0.0" />
-        <param name = "mag_declination_auto" value="false" />
+        <!-- <param name = "mag_declination" value="0.0" /> -->
+        <param name = "mag_declination_auto" value="true" />
         <param name = "acceptable_var" value = "5" />
         <param name = "m_gps_wait_time" value ="5"/>
         <param name = "datum_latitude" value="41.621564"/>

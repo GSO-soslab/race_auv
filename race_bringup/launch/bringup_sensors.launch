@@ -21,12 +21,12 @@
     </include>
 
     <!-- Bring up GPS -->
-    <!-- <include file="$(find race_bringup)/launch/include/gps_nmea.launch.xml">
-        <arg name="robot_name" value="$(arg robot_name)"/>
-    </include> -->
-    <include file="$(find race_bringup)/launch/include/gps_gpsd.launch.xml">
+    <include file="$(find race_bringup)/launch/include/gps_nmea.launch.xml">
         <arg name="robot_name" value="$(arg robot_name)"/>
     </include>
+    <!-- <include file="$(find race_bringup)/launch/include/gps_gpsd.launch.xml">
+        <arg name="robot_name" value="$(arg robot_name)"/>
+    </include> -->
 
     <!-- Bringup computer monitor node-->
     <include file="$(find race_bringup)/launch/include/monitor.launch.xml">
