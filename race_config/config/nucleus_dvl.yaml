@@ -5,7 +5,7 @@ publish_custom: 'False'
 trigger:
   source: 'INTERNAL'
 
-  freq: '1'
+  freq: '8'
 
   altimeter: '0'
 

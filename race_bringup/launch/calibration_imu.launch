@@ -1,0 +1,35 @@
+<?xml version="1.0" ?>
+
+<launch>
+ <arg name="robot_name" default="race"/>
+
+  <!-- magnetometer calibration -->
+    <node ns="$(arg robot_name)" pkg="calib_magnetometer" type="calibrate_imu.py" name="mag_calibrator" output="screen">
+      <param name="publish_calibrated" value="False" />
+      <param name="multi_datasets" value="False" />
+      <param name="max_samples" value="100000" />
+      <param name="use_sim_time" value="false" />
+      <param name="calibrations_dir" value="$(find calib_magnetometer)/result" />
+      <remap from="/magnetometer" to="mag"/>
+    </node>
+
+    <!-- gyro calibrtion  -->
+    <!-- <node ns="$(arg robot_name)" pkg="calib_gyro" type="calibrate_gyro.py" name="gyro_calibrator" output="screen">
+    </node> -->
+
+    <!-- accel calibrtion  -->
+    <!-- <node ns="$(arg robot_name)" pkg="calib_accelerometer" type="calib_accel" name="accl_calibrator" output="screen">
+      <remap from="/imu_input" to="imu/data"/>
+      <param name="max_samples" value="600" />
+      <param name="log" value="false" />
+    </node> -->
+
+    <!-- Bring up Xsens AHRS -->
+    <!-- <include file="$(find race_bringup)/launch/include/microstrain.launch.xml">
+        <arg name="robot_name" value="$(arg robot_name)"/>
+    </include>  -->
+
+  <!-- ros service for send commands: start,stop,calibrate -->
+
+
+</launch>

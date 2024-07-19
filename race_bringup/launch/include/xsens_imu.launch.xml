@@ -18,4 +18,43 @@
         <param name="frame_id" value="$(arg robot_name)/imu"/>
     </node>
 
+
+    <node ns="$(arg robot_name)" pkg="imu_filter_madgwick" type="imu_filter_node" name="imu_filter_node" output="screen">
+        <param name = "world_frame" value="enu"/>
+        <param name = "gain" value = "0.1"/>
+        
+        <param name = "mag_bias_x" value="0.77415562"/>
+        <param name = "mag_bias_y" value="-0.46728489"/>
+        <param name = "mag_bias_z" value="1.04641236"/>
+        <!-- <param name = "mag_bias_z" value="0.0"/> -->
+
+        <!-- <param name = "mag_bias_x" value="0.58970089"/>
+        <param name = "mag_bias_y" value="-0.32543941"/>
+        <param name = "mag_bias_z" value="0.87908034"/> -->
+
+
+        <param name = "gyro_bias_x" value="0.002694330251492743"/>
+        <param name = "gyro_bias_y" value="0.0010351471080191838"/>
+        <param name = "gyro_bias_z" value="-0.00010897217254428145"/>
+
+        <param name = "accel_bias_x" value="-1.99174e-05"/>
+        <param name = "accel_bias_x" value="-0.000201504"/>
+        <param name = "accel_bias_x" value="0.00860273"/>
+
+        <!-- <param name = "mag_bias_x" value="0.56299574"/> -->
+        <!-- <param name = "mag_bias_x" value="0.0"/> -->
+        <!-- <param name = "mag_bias_y" value="0.0"/> -->
+        <!-- <param name = "mag_bias_y" value="-0.33052537"/> -->
+        <!-- <param name = "mag_bias_z" value="0.00355841"/> -->
+        <!-- <param name = "gyro_bias_x" value="0.0026311773001223204"/>
+        <param name = "gyro_bias_y" value="0.001141067297679826"/>
+        <param name = "gyro_bias_z" value="-0.0004198860918360171"/>
+        <param name = "accel_bias_x" value="5.65068e-05"/>
+        <param name = "accel_bias_x" value="-2.88515e-05"/>
+        <param name = "accel_bias_x" value="0.00790018"/> -->
+        <param name = "use_mag" value = "true" />
+        <remap from="imu/data_raw" to="imu/data"/>
+        <remap from="imu/data" to="imu/data_filtered"/>
+    </node>
+
 </launch>

@@ -10,12 +10,12 @@
       pkg="tf2_ros"
       type="static_transform_publisher"
       args="0.0 0.0 0.0 1.570796327 0.0 3.141592653589793 $(arg robot_name)/world $(arg robot_name)/world_ned"/>
-  <node
+  <!-- <node
       ns="$(arg robot_name)"
       name="odom2world"
       pkg="tf2_ros"
       type="static_transform_publisher"
-      args="0.0 0.0 0.0 0.0 0.0 0.0 $(arg robot_name)/odom $(arg robot_name)/world"/>
+      args="0.0 0.0 0.0 0.0 0.0 0.0 $(arg robot_name)/odom $(arg robot_name)/world"/> -->
 
   <param
       name="$(arg robot_name)/robot_description"
