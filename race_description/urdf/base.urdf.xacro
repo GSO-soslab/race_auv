@@ -78,14 +78,14 @@
 
     <link name="heave_stern_port_thruster_link"/>
     <joint name="heave_stern_port_thruster_joint" type="fixed">
-        <origin xyz="-0.104 -0.1034 0.07535" rpy="-1.571 1.571 0.0"/>
+        <origin xyz="-0.104 0.1034 0.07535" rpy="-1.571 1.571 0.0"/>
         <parent link="base_link"/>
         <child link="heave_stern_port_thruster_link"/>
     </joint>
 
     <link name="heave_stern_stdb_thruster_link"/>
     <joint name="heave_stern_stdb_thruster_joint" type="fixed">
-        <origin xyz="-0.104 0.1034 0.07535" rpy="1.571 1.571 0.0"/>
+        <origin xyz="-0.104 -0.1034 0.07535" rpy="1.571 1.571 0.0"/>
         <parent link="base_link"/>
         <child link="heave_stern_stdb_thruster_link"/>
     </joint>

@@ -65,4 +65,6 @@ desired_yaw_rate: 0.0
 tele_s_surge: 1
 tele_d_yaw: 10.0 
 tele_d_pitch: 10.0
-tele_d_depth: 0.5
+tele_d_depth: 0.1
+
+no_joy_timeout: 3000
