@@ -1,0 +1,16 @@
+pwm_frequency: 47.2
+pwm_ms_bias: 0.060
+
+
+thruster_ch_list: [0, 1, 2, 3, 4, 5]
+
+thruster_topic_list: [control/thruster/SurgeStbd, 
+                      control/thruster/HeaveSternPort, 
+                      control/thruster/HeaveSternStbd, 
+                      control/thruster/SwayStern,
+                      control/thruster/HeaveBow,
+                      control/thruster/SurgePort,                      
+                      ]
+thruster_min_us:  [1100, 1100, 1100, 1100, 1100, 1100]
+thruster_max_us:  [1900, 1900, 1900, 1900, 1900, 1900]
+thruster_init_us: [1500, 1500, 1500, 1500, 1500, 1500]
