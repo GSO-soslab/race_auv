@@ -61,6 +61,13 @@
         <child link="pressure"/>
     </joint>
 
+    <link name="camera"/>
+    <joint name="camera_joint" type="fixed">
+        <origin xyz="0.3 0.23 -0.05" rpy="3.1415926 0.0 0.0"/>
+        <parent link="base_link"/>
+        <child link="camera"/>
+    </joint>
+
 
     <!-- thrusters -->
     <link name="sway_stern_thruster_link"/>
