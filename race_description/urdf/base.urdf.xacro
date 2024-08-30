@@ -21,7 +21,7 @@
     <link name="imu"/>
     <joint name="imu_joint" type="fixed">
         <!-- <origin xyz="-0.05 0.0 0.15" rpy="3.1415926 0.0 0.0"/> -->
-        <origin xyz="-0.05 0.0 0.15" rpy="0.0 0.0 0.0"/>
+        <origin xyz="0.0 0.0 0.12" rpy="0.0 0.0 0.0"/>
         <parent link="base_link"/>
         <child link="imu"/>
     </joint>
@@ -49,14 +49,14 @@
 
     <link name="gps"/>
     <joint name="gps_joint" type="fixed">
-        <origin xyz="0.25 0.1 0.4" rpy="0.0 0.0 0.0"/>
+        <origin xyz="0.22 -0.1 0.4" rpy="0.0 0.0 0.0"/>
         <parent link="base_link"/>
         <child link="gps"/>
     </joint>
 
     <link name="pressure"/>
     <joint name="pressure_joint" type="fixed">
-        <origin xyz="0.1 0.0 0.0" rpy="3.1415926 0.0 0.0"/>
+        <origin xyz="0.2 0.0 -0.09" rpy="3.1415926 0.0 0.0"/>
         <parent link="base_link"/>
         <child link="pressure"/>
     </joint>
@@ -65,28 +65,28 @@
     <!-- thrusters -->
     <link name="sway_stern_thruster_link"/>
     <joint name="sway_stern_thruster_joint" type="fixed">
-        <origin xyz="-0.2075 0.0 0.07535" rpy="3.1415926 0.0 -1.571"/>
+        <origin xyz="-0.29 0.0 0.07535" rpy="3.1415926 0.0 -1.571"/>
         <parent link="base_link"/>
         <child link="sway_stern_thruster_link"/>
     </joint>
     
     <link name="heave_bow_thruster_link"/>
     <joint name="heave_bow_thruster_joint" type="fixed">
-        <origin xyz="0.38065 0.0 0.07535" rpy="3.1415926 1.571 0.0"/>
+        <origin xyz="0.3 0.0 0.07535" rpy="3.1415926 1.571 0.0"/>
         <parent link="base_link"/>
         <child link="heave_bow_thruster_link"/>
     </joint>
 
     <link name="heave_stern_port_thruster_link"/>
     <joint name="heave_stern_port_thruster_joint" type="fixed">
-        <origin xyz="-0.104 0.1034 0.07535" rpy="-1.571 1.571 0.0"/>
+        <origin xyz="-0.19 0.1034 0.07535" rpy="-1.571 1.571 0.0"/>
         <parent link="base_link"/>
         <child link="heave_stern_port_thruster_link"/>
     </joint>
 
     <link name="heave_stern_stdb_thruster_link"/>
     <joint name="heave_stern_stdb_thruster_joint" type="fixed">
-        <origin xyz="-0.104 -0.1034 0.07535" rpy="1.571 1.571 0.0"/>
+        <origin xyz="-0.19 -0.1034 0.07535" rpy="1.571 1.571 0.0"/>
         <parent link="base_link"/>
         <child link="heave_stern_stdb_thruster_link"/>
     </joint>
@@ -94,14 +94,14 @@
 
     <link name="surge_port_thruster_link"/>
     <joint name="surge_port_thruster_joint" type="fixed">
-        <origin xyz="-0.404 0.125 0.05485" rpy="1.571 0.0 0.52"/>
+        <origin xyz="-0.41 0.125 0.05485" rpy="1.571 0.0 0.52"/>
         <parent link="base_link"/>
         <child link="surge_port_thruster_link"/>
     </joint>
 
     <link name="surge_stdb_thruster_link"/>
     <joint name="surge_stdb_thruster_joint" type="fixed">
-        <origin xyz="-0.404 -0.125 0.05485" rpy="-1.571 0.0 -0.52"/>
+        <origin xyz="-0.41 -0.125 0.05485" rpy="-1.571 0.0 -0.52"/>
         <parent link="base_link"/>
         <child link="surge_stdb_thruster_link"/>
     </joint>
