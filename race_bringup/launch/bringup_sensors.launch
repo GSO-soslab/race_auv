@@ -29,18 +29,18 @@
     <!-- <include file="$(find race_bringup)/launch/include/gps_nmea.launch.xml">
         <arg name="robot_name" value="$(arg robot_name)"/>
     </include> -->
-    <!-- <include file="$(find race_bringup)/launch/include/gps_gpsd.launch.xml">
+    <include file="$(find race_bringup)/launch/include/gps_gpsd.launch.xml">
         <arg name="robot_name" value="$(arg robot_name)"/>
-    </include> -->
+    </include>
 
     <!-- Bringup computer monitor node-->
     <include file="$(find race_bringup)/launch/include/monitor.launch.xml">
         <arg name="robot_name" value="$(arg robot_name)"/>
     </include>
     
-        <!-- Bring up Nucleus DVL -->
-    <!-- <include file="$(find race_bringup)/launch/include/nucleus_dvl.launch.xml">
+    <!-- Bring up Nucleus DVL -->
+    <include file="$(find race_bringup)/launch/include/nucleus_dvl.launch.xml">
         <arg name="robot_name" value="$(arg robot_name)"/>
-    </include> -->
+    </include>
 
 </launch>

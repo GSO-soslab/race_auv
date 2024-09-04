@@ -38,7 +38,7 @@
         <param name="imu0_queue_size" value="100"/>
         <param name="imu0_remove_gravitational_acceleration" value="true"/>
 
-        <param name="twist0" value="nucleus_node/dv/twist"/>
+        <param name="twist0" value="nucleus_node/dvl/twist"/>
         <rosparam param="twist0_config">
         [false, false, false,
          false, false, false,
@@ -87,7 +87,7 @@
         <param name = "tf_prefix" value="$(arg robot_name)"/>
         <!-- <param name = "mag_declination" value="0.0" /> -->
         <param name = "mag_declination_auto" value="true" />
-        <param name = "acceptable_var" value = "5" />
+        <param name = "acceptable_var" value = "25" />
         <param name = "m_gps_wait_time" value ="5"/>
         <param name = "datum_latitude" value="41.621564"/>
         <param name = "datum_longitude" value="-71.410980"/>
