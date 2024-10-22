@@ -1,6 +1,6 @@
-device_name: [24v_payload, regular_payload, jetson]
+device_name: [jetson, regular_payload]
 #Wring PI GPIO number
-gpio: [12, 10, 11]
+gpio: [12, 10]
 
 # pwm_name: [lumen_brightness]
 # pwm_io: [23]
