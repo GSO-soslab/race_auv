@@ -12,8 +12,9 @@ waypoints:
 
 update_topic: update_waypoints
 append_topic: append_waypoints
-surge_velocity: 0.80
-lookahead_distance: 10.0
+surge_velocity: 0.5
+# lookahead_distance: 3.0
+lookahead_distance: 3.0
 state_done: start
 state_fail: kill
 # cross-track error rate compenstation

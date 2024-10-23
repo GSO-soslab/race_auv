@@ -2,6 +2,8 @@ generator_type: tf
 
 controller_frequency: 20
 
+controller_no_setpoint_timeout: 1
+
 # tf_prefix: alpha_rise
 cg_link: cg_link
 
@@ -18,25 +20,27 @@ control_modes:
     pitch_rate: {p: 2.0,  i: 0.5,   d: 3.0,  i_max: 20, i_min: -20}
 
   flight:
-    z:        {p: 20.0,    i: 2.0 ,  d: 5.0,  i_max: 30, i_min: -30}
-    surge:    {p: 50.0,    i: 10.0,   d: 0.0,   i_max: 30, i_min: -30}
-    pitch:    {p: 10.0,    i: 0.0,   d: 10.0,  i_max: 20, i_min: -20}
-    yaw:      {p: 10.0,    i: 1.0,   d: 10.0,  i_max: 30, i_min: -30}
+    pitch:    {p: 5.0,   i: 1.0,  d: 1.0,  i_max: 15, i_min: -15}
+    yaw:      {p: 5.0,   i: 0.2,   d: 8.0,  i_max: 15, i_min: -15}
+    z:        {p: 25.0,   i: 1.0 ,  d: 3.0,  i_max: 30, i_min: -30}
+    roll:     {p: 2.0,   i: 0.1,  d: 1.0,  i_max: 15, i_min: -15}
+    surge:    {p: 25.0,   i: 1.0,   d: 5.0,   i_max: 50, i_min: -50}
+
 
   hold_dof:
     # x:        {p: 3.0,    i: 0.1,   d: 5.0,  i_max: 20, i_min: -20}
     # y:         {p: 3.0,    i: 0.1 ,  d: 5.0,  i_max: 20, i_min: -20}
     # z:        {p: 15.0,    i: 1.0 ,  d: 2.0,  i_max: 60, i_min: -60}
-    z:        {p: 20.0,   i: 1.0 ,  d: 3.0,  i_max: 20, i_min: -20}
-
+    
     ## heave:    {p: 10.0,   i: 1.0,  d: 5.0,  i_max: 20, i_min: -30}
-    roll:     {p: 1.0,   i: 0.05,  d: 1.0,  i_max: 10, i_min: -10}
-    surge:    {p: 25.0,   i: 1.0,   d: 5.0,   i_max: 50, i_min: -50}
-    # pitch:    {p: 5.0,   i: 0.5,  d: 1.0,  i_max: 20, i_min: -20}
-    pitch:    {p: 15.0,   i: 2.0,  d: 5.0,  i_max: 10, i_min: -10}
-    yaw:      {p: 5.0,   i: 0.2,   d: 5.0,  i_max: 20, i_min: -20}
-
     # sway:     {p: 5.0 ,  i: 0.2,   d: 5.0,  i_max: 20, i_min: -20}
+    # pitch:    {p: 5.0,   i: 0.5,  d: 1.0,  i_max: 20, i_min: -20}
+    pitch:    {p: 5.0,   i: 1.0,  d: 1.0,  i_max: 15, i_min: -15}
+    yaw:      {p: 5.0,   i: 0.2,   d: 8.0,  i_max: 15, i_min: -15}
+    z:        {p: 25.0,   i: 1.0 ,  d: 3.0,  i_max: 30, i_min: -30}
+    roll:     {p: 2.0,   i: 0.1,  d: 1.0,  i_max: 15, i_min: -15}
+    surge:    {p: 25.0,   i: 1.0,   d: 5.0,   i_max: 50, i_min: -50}
+   
 
 
 
@@ -128,17 +132,17 @@ thruster_polynomials:
 
 thruster_limits:
   sway_stern: 
-    max: 20
-    min: -20
+    max: 12
+    min: -12
   heave_bow: 
     max: 15
     min: -15
   heave_stern_port: 
-    max: 15
-    min: -15
+    max: 10
+    min: -10
   heave_stern_stdb: 
-    max: 15
-    min: -15
+    max: 10
+    min: -10
   surge_port: 
     max: 25
     min: -25
