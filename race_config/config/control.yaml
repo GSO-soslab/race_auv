@@ -21,12 +21,18 @@ control_modes:
 
   flight:
     # roll is minimal, surge is fast, slight pitch.
+    # sway:     {p: 5.0 ,  i: 0.2,   d: 5.0,  pid_max: 15, pid_min: -15}
+    # pitch:    {p: 5.0,   i: 1.0,  d: 1.5,  pid_max: 15, pid_min: -15}
+    # yaw:      {p: 5.0,   i: 0.2,   d: 10.0,  pid_max: 15, pid_min: -15}
+    # z:        {p: 12.0,   i: 1.0 ,  d: 5.0,  pid_max: 20, pid_min: -20}
+    # roll:     {p: 2.0,   i: 0.1,  d: 2.0,  pid_max: 15, pid_min: -15}
+    # surge:    {p: 25.0,   i: 1.0,   d: 5.0,   pid_max: 50, pid_min: -50}
     sway:     {p: 5.0 ,  i: 0.2,   d: 5.0,  pid_max: 15, pid_min: -15}
-    pitch:    {p: 5.0,   i: 1.0,  d: 1.5,  pid_max: 15, pid_min: -15}
-    yaw:      {p: 5.0,   i: 0.2,   d: 10.0,  pid_max: 15, pid_min: -15}
-    z:        {p: 12.0,   i: 1.0 ,  d: 5.0,  pid_max: 20, pid_min: -20}
-    roll:     {p: 2.0,   i: 0.1,  d: 2.0,  pid_max: 15, pid_min: -15}
-    surge:    {p: 25.0,   i: 1.0,   d: 5.0,   pid_max: 50, pid_min: -50}
+    pitch:    {p: 5.0,   i: 1.0,  d: 3.0,  pid_max: 20, pid_min: -20}
+    yaw:      {p: 4.0,   i: 0.2,   d: 8.0,  pid_max: 15, pid_min: -15}
+    z:        {p: 15.0,   i: 1.0 ,  d: 5.0,  pid_max: 30, pid_min: -30}
+    roll:     {p: 2.0,   i: 0.1,  d: 8.0,  pid_max: 10, pid_min: -10}
+    surge:    {p: 30.0,   i: 1.5,   d: 5.0,   pid_max: 50, pid_min: -50}
 
 
   hold_dof:
@@ -36,13 +42,12 @@ control_modes:
     # z:        {p: 15.0,   i: 1.0 ,  d: 5.0,  pid_max: 30, pid_min: -30}
     # roll:     {p: 2.0,   i: 0.1,  d: 1.0,  pid_max: 15, pid_min: -15}
     # surge:    {p: 25.0,   i: 1.0,   d: 5.0,   pid_max: 50, pid_min: -50}
-
     sway:     {p: 5.0 ,  i: 0.2,   d: 5.0,  pid_max: 15, pid_min: -15}
-    pitch:    {p: 5.0,   i: 1.0,  d: 1.5,  pid_max: 15, pid_min: -15}
-    yaw:      {p: 5.0,   i: 0.2,   d: 10.0,  pid_max: 15, pid_min: -15}
-    z:        {p: 12.0,   i: 1.0 ,  d: 5.0,  pid_max: 20, pid_min: -20}
-    roll:     {p: 2.0,   i: 0.1,  d: 2.0,  pid_max: 15, pid_min: -15}
-    surge:    {p: 25.0,   i: 1.0,   d: 5.0,   pid_max: 50, pid_min: -50}
+    pitch:    {p: 5.0,   i: 1.0,  d: 3.0,  pid_max: 20, pid_min: -20}
+    yaw:      {p: 4.0,   i: 0.2,   d: 8.0,  pid_max: 15, pid_min: -15}
+    z:        {p: 15.0,   i: 1.0 ,  d: 5.0,  pid_max: 30, pid_min: -30}
+    roll:     {p: 2.0,   i: 0.1,  d: 8.0,  pid_max: 10, pid_min: -10}
+    surge:    {p: 30.0,   i: 1.5,   d: 5.0,   pid_max: 50, pid_min: -50}
    
 
 
