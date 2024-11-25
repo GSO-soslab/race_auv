@@ -20,7 +20,7 @@ finite_state_machine:
 
   - name: kill
     mode: idle
-    transition:
+    transitions:
       - start
 
   - name: teleop

@@ -10,6 +10,7 @@ pwm_ms_bias: 0.080
 # thruster_direction: [1]
 
 thruster_ch_list: [0, 1, 2, 6, 7, 8]
+# thruster_ch_list: [6]
 
 # thruster_topic_list: [control/thruster/SurgeStbd, 
 #                       control/thruster/HeaveSternPort, 
@@ -19,7 +20,8 @@ thruster_ch_list: [0, 1, 2, 6, 7, 8]
 #                       control/thruster/SurgePort,                      
 #                       ]
 
-thruster_topic_list: [control/thruster/SwayStern, 
+thruster_topic_list: [
+                      control/thruster/SwayStern, 
                       control/thruster/HeaveSternPort, 
                       control/thruster/HeaveSternStbd, 
                       control/thruster/SurgePort,
@@ -27,11 +29,15 @@ thruster_topic_list: [control/thruster/SwayStern,
                       control/thruster/SurgeStbd,                      
                       ]
 
+# thruster_min_us: [1100]
+# thruster_max_us: [1900]
+# thruster_init_us: [1500]
 thruster_min_us:  [1100, 1100, 1100, 1100, 1100, 1100]
 thruster_max_us:  [1900, 1900, 1900, 1900, 1900, 1900]
 thruster_init_us: [1500, 1500, 1500, 1500, 1500, 1500]
-thruster_direction: [1, -1, -1, 1, 1, -1]
-# thruster_direction: [1, 1, 1, 1, 1, 1]
+thruster_direction: [1,  -1, -1, 1, 1, -1]
+# thruster_direction: [1]
+
 
 led_ch_list: [12]
 led_topic_list: [lumen_brightness]

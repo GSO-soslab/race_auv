@@ -7,7 +7,7 @@
         <param name = "world_frame" value="enu"/>
         <param name = "gain" value = "0.4"/>
 
-        <param name = "mag_bias_x" value="-0.36136056"/>
+        <!-- <param name = "mag_bias_x" value="-0.36136056"/>
         <param name = "mag_bias_y" value="-0.07491422"/>
         <param name = "mag_bias_z" value="0.19840279"/>
         <param name = "publish_tf" value ="false"/>
@@ -18,7 +18,20 @@
 
         <param name = "accel_bias_x" value="6.69682e-06"/>
         <param name = "accel_bias_y" value="-0.000109013"/>
-        <param name = "accel_bias_z" value="-0.00105733"/>
+        <param name = "accel_bias_z" value="-0.00105733"/> -->
+
+        <param name = "mag_bias_x" value="0.00623082"/>
+        <param name = "mag_bias_y" value="-0.00773233"/>
+        <param name = "mag_bias_z" value="-0.00012725"/>
+        <param name = "publish_tf" value ="false"/>
+
+        <param name = "gyro_bias_x" value="-0.0001082817696316649"/>
+        <param name = "gyro_bias_y" value="6.865674662374147e-05"/>
+        <param name = "gyro_bias_z" value="-8.205568857445864e-05"/>
+
+        <param name = "accel_bias_x" value="-0.000113287"/>
+        <param name = "accel_bias_y" value="0.00283069"/>
+        <param name = "accel_bias_z" value="0.00814426"/>
         <param name = "use_mag" value = "true" />
         <!-- <remap from="imu/data_raw" to="imu/data"/>
         <remap from="imu/data" to="imu/data_filtered"/>

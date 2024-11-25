@@ -7,6 +7,6 @@ trigger:
 
   freq: '8'
 
-  altimeter: '0'
+  altimeter: '4'
 
   current_profile: '0'

@@ -1,6 +1,6 @@
 generator_type: tf
 
-controller_frequency: 20
+controller_frequency: 10
 
 controller_no_setpoint_timeout: 1
 
@@ -46,7 +46,7 @@ control_modes:
     pitch:    {p: 5.0,   i: 1.0,  d: 3.0,  pid_max: 20, pid_min: -20}
     yaw:      {p: 4.0,   i: 0.2,   d: 8.0,  pid_max: 15, pid_min: -15}
     z:        {p: 15.0,   i: 1.0 ,  d: 5.0,  pid_max: 30, pid_min: -30}
-    roll:     {p: 2.0,   i: 0.1,  d: 8.0,  pid_max: 10, pid_min: -10}
+    roll:     {p: 2.0,   i: 0.1,  d: 8.0,  pid_max: 5, pid_min: -5}
     surge:    {p: 30.0,   i: 1.5,   d: 5.0,   pid_max: 50, pid_min: -50}
    
 

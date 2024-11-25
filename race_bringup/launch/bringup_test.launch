@@ -16,13 +16,18 @@
         <arg name="robot_name" value="$(arg robot_name)"/>
     </include> -->
   <!-- Bring up microstrain -->
-  <include file="$(find race_bringup)/launch/include/microstrain.launch.xml">
+  <!-- <include file="$(find race_bringup)/launch/include/microstrain.launch.xml">
       <arg name="robot_name" value="$(arg robot_name)"/>
-  </include> 
+  </include>  -->
   <!-- Bring up Nucleus DVL -->
   <!-- <include file="$(find race_bringup)/launch/include/nucleus_dvl.launch.xml">
       <arg name="robot_name" value="$(arg robot_name)"/>
   </include> -->
+
+          <!-- mvp_control -->
+  <include file="$(find race_bringup)/launch/include/control.launch.xml">
+      <arg name="robot_name" value="$(arg robot_name)"/>
+  </include>
 
 
 </launch>
