@@ -22,3 +22,4 @@
     ros__parameters:
       dvl_in: /race_auv/dvl/stonefish/raw
       dvl_out: /race_auv/dvl/twist
+      dvl_alt_out: /race_auv/dvl/altitude

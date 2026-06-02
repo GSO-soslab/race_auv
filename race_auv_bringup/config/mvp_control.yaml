@@ -1,7 +1,8 @@
 /race_auv/mvp_control_ros_node:
   ros__parameters:
     generator_type: tf
-    control_frequency: 20.0
+    controller_frequency: 10.0
     enabled: false
-    cg_link: cg_link
-    world_link: world_ned
+    child_link_initial: cg_link
+    world_link_initial: world_ned
+    controller_no_setpoint_timeout: 1.0

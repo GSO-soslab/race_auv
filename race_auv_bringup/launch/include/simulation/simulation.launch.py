@@ -17,8 +17,8 @@ def generate_launch_description():
     simulation_data = os.path.join(world_of_stonefish_dir, 'data/')
     scenario_desc = os.path.join(world_of_stonefish_dir, 'world', sim_world)
     simulation_rate = "100"
-    window_res_x = "800"
-    window_res_y = "600"
+    window_res_x = "1200"
+    window_res_y = "800"
     rendering_quality ="high"
 
     robot_param_path = os.path.join(
@@ -34,7 +34,7 @@ def generate_launch_description():
             package="stonefish_ros2",
             executable="stonefish_simulator",
             name="stonefish_simulator",
-            output="screen",
+            # output="screen",
             arguments=[simulation_data, scenario_desc, simulation_rate, window_res_x, window_res_y, rendering_quality]
         ),
 
@@ -45,7 +45,7 @@ def generate_launch_description():
             name="imu_driver_node",
             remappings=[
                     ('imu_in/data', 'imu/stonefish/data'),
-                    ('imu_out/data', 'imu/data'),
+                    ('imu_out/data', 'ekf/imu/data'),
                 ],
             parameters=[
                 {'frame_id': robot_name + '/imu_sf'},
@@ -58,8 +58,8 @@ def generate_launch_description():
             executable="thruster_driver_node",
             namespace=robot_name,
             name="thruster_driver_node",
-            prefix=['stdbuf -o L'],
-            output="screen",
+            # prefix=['stdbuf -o L'],
+            # output="screen",
             parameters=[stonefish_driver_param_file]
         ),
 
@@ -68,7 +68,10 @@ def generate_launch_description():
             executable="dvl_driver_node",
             namespace=robot_name,
             name="dvl_driver_node",
-            parameters=[stonefish_driver_param_file]
+            parameters=[stonefish_driver_param_file],
+            remappings=[
+                ('/race_auv/dvl/twist', '/race_auv/dvl/raw_twist')
+            ],
         ),
 
         Node(
@@ -76,7 +79,10 @@ def generate_launch_description():
             executable="pressure_sensor_node",
             namespace=robot_name,
             name="pressure_sensor_node",
+            remappings=[
+                ('depth', 'depth/odometry')
+            ],
             parameters=[
-                {'frame_id': robot_name + '/world_ned'}]
+                {'frame_id': robot_name + '/world'}]
         )
     ])

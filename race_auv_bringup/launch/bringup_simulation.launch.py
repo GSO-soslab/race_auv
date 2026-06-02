@@ -17,13 +17,13 @@ def generate_launch_description():
 
     # simulation
     simulation = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource([os.path.join(get_package_share_directory(robot_bringup), 'launch','include','simulation.launch.py')]),
+        PythonLaunchDescriptionSource([os.path.join(get_package_share_directory(robot_bringup), 'launch','include','simulation','simulation.launch.py')]),
         launch_arguments = {'arg_robot_name': arg_robot_name}.items()    
     )
 
     # robot localization
     localization = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource([os.path.join(get_package_share_directory(robot_bringup), 'launch','include','localization.launch.py')]),
+        PythonLaunchDescriptionSource([os.path.join(get_package_share_directory(robot_bringup), 'launch','include','simulation','localization_sim.launch.py')]),
         launch_arguments = {'arg_robot_name': arg_robot_name}.items()  
     )
     
@@ -36,13 +36,13 @@ def generate_launch_description():
 
     #mvp_control
     mvp_control = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource([os.path.join(get_package_share_directory(robot_bringup), 'launch','include','mvp_control.launch.py')]),
+        PythonLaunchDescriptionSource([os.path.join(get_package_share_directory(robot_bringup), 'launch','include','simulation','mvp_control_sim.launch.py')]),
         launch_arguments = {'arg_robot_name': arg_robot_name}.items()  
     )
 
     #mvp_mission
     mvp_mission = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource([os.path.join(get_package_share_directory(robot_bringup), 'launch','include','mvp_mission.launch.py')]),
+        PythonLaunchDescriptionSource([os.path.join(get_package_share_directory(robot_bringup), 'launch','include','simulation','mvp_mission_sim.launch.py')]),
         launch_arguments = {'arg_robot_name': arg_robot_name}.items()  
     )
 
@@ -54,9 +54,9 @@ def generate_launch_description():
 
     return LaunchDescription([
         simulation,
-        # localization,
-        # description,
-        # mvp_control,
-        # mvp_mission,
+        localization,
+        description,
+        mvp_control,
+        mvp_mission,
         # joy
     ])

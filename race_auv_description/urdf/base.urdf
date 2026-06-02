@@ -68,6 +68,13 @@
         <child link="pressure"/>
     </joint>
 
+    <link name="cam"/>
+    <joint name="cam_joint" type="fixed">
+        <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0"/>
+        <parent link="nose_tip_link"/>
+        <child link="cam"/>
+    </joint>
+
 <!-- 
     <link name="ping360_link"/>
     <joint name="ping360_joint" type="fixed">
