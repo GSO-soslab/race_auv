@@ -68,11 +68,18 @@
         <child link="pressure"/>
     </joint>
 
-    <link name="cam"/>
-    <joint name="cam_joint" type="fixed">
+    <link name="cam1"/>
+    <joint name="cam1_joint" type="fixed">
         <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0"/>
         <parent link="nose_tip_link"/>
-        <child link="cam"/>
+        <child link="cam1"/>
+    </joint>
+
+    <link name="cam2"/>
+    <joint name="cam2_joint" type="fixed">
+        <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0"/>
+        <parent link="nose_tip_link"/>
+        <child link="cam2"/>
     </joint>
 
 <!-- 
