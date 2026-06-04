@@ -52,11 +52,26 @@ def generate_launch_description():
         launch_arguments = {'arg_robot_name': arg_robot_name}.items()  
     )
 
+    # c2 topside
+    mvp_c2_top = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([os.path.join(get_package_share_directory(robot_bringup), 'launch','include','mvp_c2_topside.launch.py')]),
+        launch_arguments = {'arg_robot_name': arg_robot_name}.items()  
+    )
+
+    # c2 vehicle
+    mvp_c2_vehicle = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([os.path.join(get_package_share_directory(robot_bringup), 'launch','include','mvp_c2_vehicle.launch.py')]),
+        launch_arguments = {'arg_robot_name': arg_robot_name}.items()  
+    )
+
+
     return LaunchDescription([
         simulation,
         localization,
         description,
         mvp_control,
         mvp_mission,
-        # joy
+        # joy,
+        mvp_c2_top,
+        mvp_c2_vehicle
     ])

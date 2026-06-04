@@ -2,29 +2,27 @@ control_modes:
   idle: false
 
   teleop:
-    surge:      {p: 1.0,  i: 3.0,   d: 5.0,  pid_max: 10, pid_min: -10}
-    # yaw_rate:   {p: 2.0,  i: 0.5,   d: 3.0,  pid_max: 20, pid_min: -20}
-    # pitch_rate: {p: 2.0,  i: 0.5,   d: 3.0,  pid_max: 20, pid_min: -20}
-    yaw:   {p: 2.0,  i: 0.5,   d: 3.0,  pid_max: 20, pid_min: -20}
-    pitch: {p: 2.0,  i: 0.5,   d: 3.0,  pid_max: 20, pid_min: -20}
+    u:      {p: 1.0,  i: 3.0,   d: 5.0, v: 5.0,  pid_max: 10, pid_min: -10}
+    r:   {p: 2.0,  i: 0.5,   d: 3.0, v: 5.0,  pid_max: 20, pid_min: -20}
+    p: {p: 2.0,  i: 0.5,   d: 3.0, v: 5.0,  pid_max: 20, pid_min: -20}
 
   flight:
     # roll is minimal, surge is fast, slight pitch.
-    sway:     {p: 5.0 ,  i: 0.2,   d: 5.0,  pid_max: 15, pid_min: -15}
-    pitch:    {p: 5.0,   i: 1.0,  d: 3.0,  pid_max: 20, pid_min: -20}
-    yaw:      {p: 4.0,   i: 0.2,   d: 8.0,  pid_max: 15, pid_min: -15}
-    z:        {p: 15.0,   i: 1.0 ,  d: 5.0,  pid_max: 30, pid_min: -30}
-    roll:     {p: 2.0,   i: 0.1,  d: 8.0,  pid_max: 10, pid_min: -10}
-    surge:    {p: 30.0,   i: 1.5,   d: 5.0,   pid_max: 50, pid_min: -50}
+    v:     {p: 5.0 ,  i: 0.2,   d: 5.0, v: 5.0,  pid_max: 15, pid_min: -15}
+    pitch:    {p: 5.0,   i: 1.0,  d: 3.0, v: 5.0,  pid_max: 20, pid_min: -20}
+    yaw:      {p: 4.0,   i: 0.2,   d: 8.0, v: 5.0,  pid_max: 15, pid_min: -15}
+    z:        {p: 15.0,   i: 1.0 ,  d: 5.0, v: 5.0,  pid_max: 30, pid_min: -30}
+    roll:     {p: 2.0,   i: 0.1,  d: 8.0, v: 5.0,  pid_max: 10, pid_min: -10}
+    u:    {p: 30.0,   i: 1.5,   d: 5.0, v: 5.0,   pid_max: 50, pid_min: -50}
 
 
   hold_dof:
-    sway:     {p: 5.0 ,  i: 0.2,   d: 5.0,  pid_max: 15, pid_min: -15}
-    pitch:    {p: 5.0,   i: 1.0,  d: 3.0,  pid_max: 20, pid_min: -20}
-    yaw:      {p: 4.0,   i: 0.2,   d: 8.0,  pid_max: 15, pid_min: -15}
-    z:        {p: 15.0,   i: 1.0 ,  d: 5.0,  pid_max: 30, pid_min: -30}
-    roll:     {p: 2.0,   i: 0.1,  d: 8.0,  pid_max: 5, pid_min: -5}
-    surge:    {p: 30.0,   i: 1.5,   d: 5.0,   pid_max: 50, pid_min: -50}
+    v:     {p: 5.0 ,  i: 0.2,   d: 5.0, v: 5.0,  pid_max: 15, pid_min: -15}
+    pitch:    {p: 5.0,   i: 1.0,  d: 3.0, v: 5.0,  pid_max: 20, pid_min: -20}
+    yaw:      {p: 4.0,   i: 0.2,   d: 8.0, v: 5.0,  pid_max: 15, pid_min: -15}
+    z:        {p: 15.0,   i: 1.0 ,  d: 5.0, v: 5.0,  pid_max: 30, pid_min: -30}
+    roll:     {p: 2.0,   i: 0.1,  d: 8.0, v: 5.0,  pid_max: 5, pid_min: -5}
+    u:    {p: 30.0,   i: 1.5,   d: 5.0, v: 5.0,   pid_max: 50, pid_min: -50}
 
 thruster_ids:
   sway_stern:
@@ -32,6 +30,7 @@ thruster_ids:
     command_topic: control/thruster/sway_stern
     force_topic: control/force/sway_stern
     limits: [-20.0, 20.0] #[min, max]
+    delta_limit: 1.0
     polynomials: [0.0305, 18.9527, 6.1205, 64.0375, 2.4386, -24.8871]
 
   heave_bow:
@@ -39,6 +38,7 @@ thruster_ids:
     command_topic: control/thruster/heave_bow
     force_topic: control/force/heave_bow
     limits: [-20.0, 20.0] #[min, max]
+    delta_limit: 1.0
     polynomials: [0.0305, 18.9527, 6.1205, 64.0375, 2.4386, -24.8871]
 
   heave_stern_port:
@@ -46,6 +46,7 @@ thruster_ids:
       command_topic: control/thruster/heave_stern_port
       force_topic: control/force/heave_stern_port
       limits: [-20.0, 20.0] #[min, max]
+      delta_limit: 1.0
       polynomials: [0.0305, 18.9527, 6.1205, 64.0375, 2.4386, -24.8871]
 
   heave_stern_stbd:
@@ -53,6 +54,7 @@ thruster_ids:
     command_topic: control/thruster/heave_stern_stbd
     force_topic: control/force/heave_stern_stbd
     limits: [-20.0, 20.0] #[min, max]
+    delta_limit: 1.0
     polynomials: [0.0305, 18.9527, 6.1205, 64.0375, 2.4386, -24.8871]
 
   surge_port:
@@ -60,6 +62,7 @@ thruster_ids:
     command_topic: control/thruster/surge_port
     force_topic: control/force/surge_port
     limits: [-20.0, 20.0] #[min, max]
+    delta_limit: 1.0
     polynomials: [0.0305, 18.9527, 6.1205, 64.0375, 2.4386, -24.8871]
 
   surge_stbd:
@@ -67,4 +70,5 @@ thruster_ids:
     command_topic: control/thruster/surge_stbd
     force_topic: control/force/surge_stbd
     limits: [-20.0, 20.0] #[min, max]
+    delta_limit: 1.0
     polynomials: [0.0305, 18.9527, 6.1205, 64.0375, 2.4386, -24.8871]
