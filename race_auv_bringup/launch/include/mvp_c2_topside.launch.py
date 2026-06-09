@@ -13,9 +13,10 @@ def generate_launch_description():
     robot_bringup = 'race_auv' + '_bringup'
     topside_setting_file = os.path.join(get_package_share_directory(robot_bringup), 'config', 'c2', 'mvp_c2.yaml') 
     topside_traffic_manager_file = os.path.join(get_package_share_directory(robot_bringup), 'config', 'c2', 'mvp_c2_commander_traffic.yaml') 
+    usbl_traffic_manager_file = os.path.join(get_package_share_directory(robot_bringup), 'config', 'evologics', 'mvp_c2_usbl_commander_traffic.yaml')
 
 
-    # #serial
+    # # serial
     # serial_node = Node(
     #                     package = 'mvp_c2',
     #                     namespace = robot_name,
@@ -30,7 +31,7 @@ def generate_launch_description():
     #                     ]
     #                 )
 
-    #udp
+    # udp
     udp_node = Node(
                     package = 'mvp_c2',
                     namespace = robot_name,
@@ -45,7 +46,7 @@ def generate_launch_description():
                     ]
                 )
 
-    #commander node
+    # commander node
     commander_node =  Node(
                             package='mvp_c2',
                             namespace=robot_name,
@@ -69,6 +70,21 @@ def generate_launch_description():
                             prefix=['stdbuf -o L'],
                             parameters=[topside_traffic_manager_file],
                         )
+    
+    # traffic manager for usbl
+    usbl_traffic_manager =  Node(
+                                package='mvp_c2',
+                                namespace=robot_name,
+                                executable='mvp_c2_traffic_control_ros',
+                                name='mvp_c2_usbl_traffic_control',
+                                output='screen',
+                                prefix=['stdbuf -o L'],
+                                parameters=[usbl_traffic_manager_file],
+                                remappings=[
+                                    ('mvp_c2/traffic_control/dccl_msg_controlled_tx', 'acomms/data_to_send_bytes'),
+                                    ('mvp_c2/traffic_control/dccl_msg_rx', 'acomms/received_data_bytes'),
+                                ]
+                            )
 
     ##mvp_utilities for tracking the usbl fixes
 #     mvp_geopoint =   Node(
@@ -107,8 +123,9 @@ def generate_launch_description():
     
     return LaunchDescription([
         # serial_node,
-        udp_node,
-        traffic_manager,
+        # udp_node,
+        # traffic_manager,
+        usbl_traffic_manager,
         commander_node,
         # mvp_geopoint,
         # joy     

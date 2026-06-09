@@ -84,5 +84,21 @@ def generate_launch_description():
             ],
             parameters=[
                 {'frame_id': robot_name + '/world'}]
-        )
+        ),
+
+        Node(
+            package="world_of_stonefish",
+            executable="modem_driver_node",
+            namespace=robot_name,
+            name="modem_driver_node",
+            parameters=[stonefish_driver_param_file],
+        ),
+
+        Node(
+            package="world_of_stonefish",
+            executable="modem_driver_node",
+            namespace="race_top",
+            name="modem_driver_node",
+            parameters=[stonefish_driver_param_file],
+        ),
     ])

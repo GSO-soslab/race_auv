@@ -23,3 +23,17 @@
       dvl_in: /race_auv/dvl/stonefish/raw
       dvl_out: /race_auv/dvl/twist
       dvl_alt_out: /race_auv/dvl/altitude
+
+/race_auv/modem_driver_node:
+    ros__parameters:
+      modem_received_topic: /race_auv/stonefish/acomms/received_data
+      modem_send_topic: /race_auv/stonefish/acomms/data_to_send
+      modem_received_bytearray_topic: /race_auv/acomms/received_data_bytes
+      modem_send_bytearray_topic: /race_auv/acomms/data_to_send_bytes
+
+/race_top/modem_driver_node:
+    ros__parameters:
+      modem_received_topic: /race_top/stonefish/acomms/received_data
+      modem_send_topic: /race_top/stonefish/acomms/data_to_send
+      modem_received_bytearray_topic: /race_top/acomms/received_data_bytes
+      modem_send_bytearray_topic: /race_top/acomms/data_to_send_bytes

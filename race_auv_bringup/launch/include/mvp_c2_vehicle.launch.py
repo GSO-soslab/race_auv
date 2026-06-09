@@ -11,7 +11,8 @@ def generate_launch_description():
     robot_bringup = robot_name + '_bringup'
     reporter_setting_file = os.path.join(get_package_share_directory(robot_bringup), 'config', 'c2', 'mvp_c2.yaml') 
     reporter_traffic_manager_file = os.path.join(get_package_share_directory(robot_bringup), 'config', 'c2', 'mvp_c2_reporter_traffic.yaml') 
-    
+    acomm_traffic_manager_file = os.path.join(get_package_share_directory(robot_bringup), 'config', 'evologics', 'mvp_c2_acomm_reporter_traffic.yaml')
+
     # # serial_comm
     # serial_node = Node(
     #         package = 'mvp_c2',
@@ -75,13 +76,26 @@ def generate_launch_description():
                             parameters=[reporter_traffic_manager_file],
                         )
 
-    
+    ##traffic manager for modem (acomms)
+    acomm_traffic_control = Node(
+                                package='mvp_c2',
+                                namespace=robot_name,
+                                executable='mvp_c2_traffic_control_ros',
+                                name='mvp_c2_acomm_traffic_control',
+                                output='screen',
+                                prefix=['stdbuf -o L'],
+                                parameters=[acomm_traffic_manager_file],
+                                remappings=[
+                                    ('mvp_c2/traffic_control/dccl_msg_controlled_tx', 'acomms/data_to_send_bytes'),
+                                    ('mvp_c2/traffic_control/dccl_msg_rx', 'acomms/received_data_bytes'),
+                                ]
+                            )
+
     return LaunchDescription([
         # serial_node,
-        udp_node,
-        # acomm_node,
-        traffic_control,
-        # acomm_traffic_control,
+        # udp_node,
+        # traffic_control,
+        acomm_traffic_control,
         reporter_node,
     ])
 
