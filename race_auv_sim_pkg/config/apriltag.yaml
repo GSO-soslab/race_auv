@@ -1,0 +1,38 @@
+# AprilTag configuration for stonefish_apriltag_node.
+# Per-tag family/id/size; URDF path resolves each id to its rigid pose in the
+# object's base frame.
+
+apriltag:
+  # Node-level overrides (also declared in the node with these defaults).
+  image_topic:            "/race_auv/camera1/stonefish/data/image_color"
+  info_topic:             "/race_auv/camera1/stonefish/data/camera_info"
+  output_image_topic:     "apriltag_detection/image"
+  output_detections_topic: "apriltag_detection/detections3d"
+  tag_frame_prefix:       "apriltag"
+  object_base_frame:      "object_base"
+  camera_frame:           ""   # empty -> use CameraInfo.header.frame_id
+  publish_rate:           5.0
+
+  # Per-tag list. Each id MUST exist in the URDF as a child link named
+  # "<tag_link_prefix><id>" (default: "apriltag0", "apriltag1", ...).
+  object:
+    # ROS package (a directory in the workspace) that ships the URDF, and the
+    # file within its share/. Resolved at launch with
+    # get_package_share_directory(pkg) / rel -- same pattern as
+    # race_auv_bringup's description.launch.py.
+    urdf_package:     "race_station_description"   # REQUIRED: e.g. "race_auv_description"
+    urdf_filename:    "urdf/base.urdf"   # path inside the package's share/
+    base_link_name:   ""   # empty -> use the URDF root link
+    tag_link_prefix:  "apriltag"
+
+  detector_defaults:
+    nthreads:          2
+    quad_decimate:     1.0
+    quad_sigma:        0.0
+    refine_edges:      true
+    decode_sharpening: 0.25
+
+  tags:
+    - { id: 0, family: "tag25h9", size: 0.21 }
+    - { id: 1, family: "tag25h9", size: 0.21 }
+    - { id: 2, family: "tag25h9", size: 0.21 }

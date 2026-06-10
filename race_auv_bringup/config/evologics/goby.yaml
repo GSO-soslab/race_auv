@@ -1,4 +1,4 @@
-/**/**:
+/**:
   ros__parameters:
     goby:
       max_frame_bytes: 200

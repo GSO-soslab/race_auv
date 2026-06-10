@@ -1,4 +1,4 @@
-/race_auv/mvp_c2_traffic_control:
+/**:
   ros__parameters:
 
     max_frame_size: 300  #maximum size per transmission packet

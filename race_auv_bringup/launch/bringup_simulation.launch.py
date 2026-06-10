@@ -72,6 +72,6 @@ def generate_launch_description():
         mvp_control,
         mvp_mission,
         # joy,
-        mvp_c2_top,
+        # mvp_c2_top,
         mvp_c2_vehicle
     ])

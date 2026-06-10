@@ -93,12 +93,4 @@ def generate_launch_description():
             name="modem_driver_node",
             parameters=[stonefish_driver_param_file],
         ),
-
-        Node(
-            package="world_of_stonefish",
-            executable="modem_driver_node",
-            namespace="race_top",
-            name="modem_driver_node",
-            parameters=[stonefish_driver_param_file],
-        ),
     ])
