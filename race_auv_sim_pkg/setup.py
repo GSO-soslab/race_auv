@@ -25,7 +25,8 @@ setup(
     license='MIT',
     entry_points={
         'console_scripts': [
-            'stonefish_apriltag_node = race_auv_sim_pkg.stonefish_apriltag_node:main',
+            'apriltag_detector_node = race_auv_sim_pkg.apriltag_detector_node:main',
+            'apriltag_fuser_node = race_auv_sim_pkg.apriltag_fuser_node:main',
         ],
     },
 )

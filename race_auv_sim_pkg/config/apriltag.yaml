@@ -1,38 +1,98 @@
-# AprilTag configuration for stonefish_apriltag_node.
-# Per-tag family/id/size; URDF path resolves each id to its rigid pose in the
-# object's base frame.
+# AprilTag pipeline configuration.
+#
+# Single source of truth for the per-camera detectors and the multi-camera
+# fuser. `launch/apriltag.launch.py` reads this file; `bringup_simulation`
+# just includes that launch file with no arguments.
+#
+# To add or remove cameras, edit the `cameras:` list. To switch to real DWE
+# hardware, change `image_transport` to `compressed` and point `image_topic`
+# at the driver output (see APRILTAG_REFACTOR_PLAN.md section 6).
 
 apriltag:
-  # Node-level overrides (also declared in the node with these defaults).
-  image_topic:            "/race_auv/camera1/stonefish/data/image_color"
-  info_topic:             "/race_auv/camera1/stonefish/data/camera_info"
-  output_image_topic:     "apriltag_detection/image"
-  output_detections_topic: "apriltag_detection/detections3d"
-  tag_frame_prefix:       "apriltag"
-  object_base_frame:      "object_base"
-  camera_frame:           ""   # empty -> use CameraInfo.header.frame_id
-  publish_rate:           5.0
-
-  # Per-tag list. Each id MUST exist in the URDF as a child link named
-  # "<tag_link_prefix><id>" (default: "apriltag0", "apriltag1", ...).
+  # URDF that describes the tag layout in the object's base frame.
   object:
-    # ROS package (a directory in the workspace) that ships the URDF, and the
-    # file within its share/. Resolved at launch with
-    # get_package_share_directory(pkg) / rel -- same pattern as
-    # race_auv_bringup's description.launch.py.
-    urdf_package:     "race_station_description"   # REQUIRED: e.g. "race_auv_description"
-    urdf_filename:    "urdf/base.urdf"   # path inside the package's share/
-    base_link_name:   ""   # empty -> use the URDF root link
-    tag_link_prefix:  "apriltag"
+    urdf_package:   "race_station_description"
+    urdf_filename:  "urdf/base.urdf"
+    base_link_name: ""              # empty -> URDF root link
+    tag_link_prefix: "apriltag"
 
+  # Shared detector tuning.
   detector_defaults:
     nthreads:          2
     quad_decimate:     1.0
     quad_sigma:        0.0
     refine_edges:      true
     decode_sharpening: 0.25
+    publish_rate:      5.0
 
+  # Tag family / id / physical size.
   tags:
     - { id: 0, family: "tag25h9", size: 0.21 }
     - { id: 1, family: "tag25h9", size: 0.21 }
     - { id: 2, family: "tag25h9", size: 0.21 }
+
+  # One entry per physical camera. Add / remove / enable cameras here.
+  cameras:
+    - name: "cam1"
+      enabled: true
+      namespace: "cam1"
+      # Topic type: "raw"       -> sensor_msgs/Image
+      #             "compressed" -> sensor_msgs/CompressedImage
+      image_transport: "raw"
+      image_topic: "/race_auv/camera1/stonefish/data/image_color"
+      info_topic:  "/race_auv/camera1/stonefish/data/camera_info"
+      # Stonefish publishes CameraInfo with the bare sensor name ("cam1") but the
+      # URDF robot_state_publisher uses the robot prefix ("race_auv/cam1"). Force
+      # the detector to tag detections/TF frames with the URDF frame so the fuser
+      # can look up race_auv/base_link -> camera.
+      camera_frame: "race_auv/cam1"
+      # Per-camera TF prefix so multiple cameras do not fight over "apriltag".
+      tag_frame_prefix: "apriltag"
+      output_image_topic: "apriltag_detection/image"
+      output_detections_topic: "apriltag_detection/detections3d"
+      # Intrinsics fallback (used only when info_topic is empty).
+      intrinsics:
+        fx: 0.0
+        fy: 0.0
+        cx: 0.0
+        cy: 0.0
+        width: 0
+        height: 0
+        distortion: [0.0, 0.0, 0.0, 0.0, 0.0]
+        fisheye: false
+
+    - name: "cam2"
+      enabled: true
+      namespace: "cam2"
+      image_transport: "raw"
+      image_topic: "/race_auv/camera2/stonefish/data/image_color"
+      info_topic:  "/race_auv/camera2/stonefish/data/camera_info"
+      # Stonefish publishes CameraInfo with the bare sensor name ("cam2") but the
+      # URDF robot_state_publisher uses the robot prefix ("race_auv/cam2"). Force
+      # the detector to tag detections/TF frames with the URDF frame so the fuser
+      # can look up race_auv/base_link -> camera.
+      camera_frame: "race_auv/cam2"
+      tag_frame_prefix: "apriltag"
+      output_image_topic: "apriltag_detection/image"
+      output_detections_topic: "apriltag_detection/detections3d"
+      intrinsics:
+        fx: 0.0
+        fy: 0.0
+        cx: 0.0
+        cy: 0.0
+        width: 0
+        height: 0
+        distortion: [0.0, 0.0, 0.0, 0.0, 0.0]
+        fisheye: false
+
+  # Multi-camera fuser. Owns the single fused object_base TF and a matching
+  # PoseStamped topic.
+  fuser:
+    enabled: true
+    reference_frame: "race_auv/base_link"
+    output_frame:    "object_base"
+    output_pose_topic: "object_base/pose"   # "" to disable
+    publish_rate:    5.0
+    min_pairs:       1
+    detection_max_age: 0.5
+    tf_timeout:      0.1

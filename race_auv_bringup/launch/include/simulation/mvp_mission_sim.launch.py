@@ -54,6 +54,7 @@ def generate_launch_description():
                         output="screen",
                         remappings=[
                             ('datum', 'gps/datum'),
+                            ('imu/data', 'ekf/imu/data'), 
                             # ('gps/fix', 'unicore_rtk_driver/fix')
                         ],
                         parameters=[
