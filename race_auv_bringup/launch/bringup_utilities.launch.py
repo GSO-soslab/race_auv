@@ -1,0 +1,70 @@
+import os
+
+from ament_index_python.packages import get_package_share_directory
+from launch import LaunchDescription
+from launch.actions import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.actions import DeclareLaunchArgument
+from launch.substitutions import LaunchConfiguration, PythonExpression
+from launch_ros.actions import Node
+from launch_xml.launch_description_sources import XMLLaunchDescriptionSource
+from launch.substitutions import PathJoinSubstitution
+from launch_ros.substitutions import FindPackageShare
+
+
+def generate_launch_description():
+    arg_robot_name = 'race_auv'
+    robot_bringup = arg_robot_name + '_bringup'
+
+    #Power Monitor
+    power_monitor = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([os.path.join(get_package_share_directory(robot_bringup), 'launch','include','power_monitor.launch.py')]),
+        launch_arguments = {'arg_robot_name': arg_robot_name}.items()  
+    )
+
+    #Computer Monitor
+    computer_monitor = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([os.path.join(get_package_share_directory(robot_bringup), 'launch','include','computer_monitor.launch.py')]),
+        launch_arguments = {'arg_robot_name': arg_robot_name}.items()  
+    )
+
+    #GPIO Manager
+    gpio_manager = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([os.path.join(get_package_share_directory(robot_bringup), 'launch','include','gpio_manager.launch.py')]),
+        launch_arguments = {'arg_robot_name': arg_robot_name}.items()  
+    )
+    
+    #Foxglove Bridge
+    foxglove = Node(
+        package='foxglove_bridge',
+        executable='foxglove_bridge',
+        name='foxglove_bridge',
+        output='screen'
+    )
+
+    # Unicore GPS for time sync
+    gps = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([os.path.join(get_package_share_directory(robot_bringup), 'launch','include','unicore_rtk.launch.py')]),
+        launch_arguments = {'arg_robot_name': arg_robot_name}.items()  
+    )
+
+    # Vehicle description
+    description = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([
+            os.path.join(get_package_share_directory(robot_bringup), 
+            'launch/include/description.launch.py')]),
+        launch_arguments={
+            'robot_name': arg_robot_name,
+            'description_delay': '0.0'
+        }.items()  
+    )
+
+    return LaunchDescription([
+        power_monitor,
+        computer_monitor,
+        gpio_manager,
+        # gps,
+        description
+        # foxglove
+    ])
+    

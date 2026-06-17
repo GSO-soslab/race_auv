@@ -1,0 +1,11 @@
+/**:
+  ros__parameters:
+    gpio_devices: [jetson, dvl, payload_24v, optical_modem]
+    # gpio_devices: [optical_modem, payload_24v, dvl, jetson]
+    # gpio: 7, 8, 9, 10
+    # Wring PI GPIO number
+    wiringpi_gpio: [11, 10, 13, 12]
+    # 13 -> payload 24v modem [not working]
+    # 12 -> optical modem
+    # 11 -> jetson
+    # 10 -> dvl
