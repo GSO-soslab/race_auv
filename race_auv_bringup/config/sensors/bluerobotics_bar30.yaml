@@ -1,0 +1,24 @@
+/**:
+    ros__parameters:
+        ros:
+            frame_id: 'race_auv/pressure'
+
+        sensor:
+            # brief: MODEL_02BA = 0, MODEL_30BA = 1
+            model: 1
+
+            # brief: Default I2C bus is 1
+            bus: 1
+
+            # brief: Fluid Density (kg/m^3); fresh: 997.0474; seawater: 1023.6
+            fluid_density: 1022.0
+
+            child_frame: 'race_auv/pressure'
+
+            parent_frame: 'race_auv/world'
+
+            z_covariance: 0.11
+
+        system:
+            # brief: sensor publish rate
+            rate: 1
