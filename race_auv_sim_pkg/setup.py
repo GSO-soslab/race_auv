@@ -27,6 +27,7 @@ setup(
         'console_scripts': [
             'apriltag_detector_node = race_auv_sim_pkg.apriltag_detector_node:main',
             'apriltag_fuser_node = race_auv_sim_pkg.apriltag_fuser_node:main',
+            'ground_truth_docking_node = race_auv_sim_pkg.ground_truth_docking_node:main',
         ],
     },
 )

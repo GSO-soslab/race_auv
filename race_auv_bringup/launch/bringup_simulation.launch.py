@@ -75,6 +75,14 @@ def generate_launch_description():
         ]),
     )
 
+    # ground-truth docking-station pose in auv base_link
+    ground_truth_pose = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([
+            os.path.join(get_package_share_directory(sim_tagdet_bringup),
+                         'launch', 'ground_truth_pose.launch.py')
+        ]),
+    )
+
     # race station bringup
     station_simulation = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([os.path.join(get_package_share_directory(station_bringup), 'launch','bringup_simulation.launch.py')]),
@@ -91,5 +99,6 @@ def generate_launch_description():
         # mvp_c2_top,
         # mvp_c2_vehicle,
         apriltag_pipeline,
+        ground_truth_pose,
         station_simulation
     ])
