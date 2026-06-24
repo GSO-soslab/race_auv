@@ -5,8 +5,13 @@ Subscribes to the two Stonefish odometry topics:
 * ``/race_auv/stonefish/odometry``
 * ``/race_station/stonefish/odometry``
 
-and publishes ``geometry_msgs/PoseStamped`` representing the pose of
-``race_station/base_link`` expressed in ``race_auv/base_link``.
+and publishes both:
+
+* ``geometry_msgs/PoseStamped`` on ``/race_auv/docking_station/ground_truth/pose``
+* a TF transform ``race_auv/base_link -> race_station/base_link``
+
+representing the pose of ``race_station/base_link`` expressed in
+``race_auv/base_link``.
 
 The odometry sensors in the Stonefish scenario are mounted on the vehicle
 ``Base`` link with zero origin/rotation, so no static offset is applied by
@@ -17,11 +22,12 @@ from __future__ import annotations
 
 import numpy as np
 import rclpy
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, TransformStamped
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 from scipy.spatial.transform import Rotation as R
+from tf2_ros import TransformBroadcaster
 
 
 def _pose_to_matrix(pose) -> np.ndarray:
@@ -45,6 +51,24 @@ def _matrix_to_pose_msg(T: np.ndarray) -> PoseStamped:
     msg.pose.orientation.y = float(q[1])
     msg.pose.orientation.z = float(q[2])
     msg.pose.orientation.w = float(q[3])
+    return msg
+
+
+def _matrix_to_transform_msg(
+    T: np.ndarray, parent_frame: str, child_frame: str
+) -> TransformStamped:
+    """4x4 homogeneous transform -> geometry_msgs/TransformStamped."""
+    msg = TransformStamped()
+    msg.header.frame_id = parent_frame
+    msg.child_frame_id = child_frame
+    msg.transform.translation.x = float(T[0, 3])
+    msg.transform.translation.y = float(T[1, 3])
+    msg.transform.translation.z = float(T[2, 3])
+    q = R.from_matrix(T[:3, :3]).as_quat()
+    msg.transform.rotation.x = float(q[0])
+    msg.transform.rotation.y = float(q[1])
+    msg.transform.rotation.z = float(q[2])
+    msg.transform.rotation.w = float(q[3])
     return msg
 
 
@@ -81,11 +105,12 @@ class GroundTruthDockingNode(Node):
         )
 
         self._pub = self.create_publisher(PoseStamped, output_topic, 10)
+        self._tf_broadcaster = TransformBroadcaster(self)
         self._timer = self.create_timer(1.0 / publish_rate, self._publish)
 
         self.get_logger().info(
             f"Publishing ground-truth pose of {self._station_base_frame} "
-            f"in {self._auv_base_frame} on {output_topic}"
+            f"in {self._auv_base_frame} on {output_topic} and /tf"
         )
 
     def _auv_odom_cb(self, msg: Odometry) -> None:
@@ -107,11 +132,18 @@ class GroundTruthDockingNode(Node):
         # T_auv_station = inv(T_w_auv) * T_w_station
         T_auv_station = np.linalg.inv(T_w_auv) @ T_w_station
 
-        msg = _matrix_to_pose_msg(T_auv_station)
-        msg.header.stamp = self.get_clock().now().to_msg()
-        msg.header.frame_id = self._auv_base_frame
+        stamp = self.get_clock().now().to_msg()
 
-        self._pub.publish(msg)
+        pose_msg = _matrix_to_pose_msg(T_auv_station)
+        pose_msg.header.stamp = stamp
+        pose_msg.header.frame_id = self._auv_base_frame
+        self._pub.publish(pose_msg)
+
+        tf_msg = _matrix_to_transform_msg(
+            T_auv_station, self._auv_base_frame, self._station_base_frame
+        )
+        tf_msg.header.stamp = stamp
+        self._tf_broadcaster.sendTransform(tf_msg)
 
 
 def main(args=None):
