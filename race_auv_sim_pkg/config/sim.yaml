@@ -1,0 +1,40 @@
+# Simulation parameters for the race_station_light scenario.
+# All values flow into the scenario through Stonefish $(arg ...) substitution
+# and the launch file (race_station_light.launch.py).
+
+scenario:
+  # World scenario file (resolved from world_of_stonefish/world/).
+  sim_world: race_station_light.scn
+  # Name passed to the scenario as $(arg robot_name). Also used as the ROS
+  # topic namespace for the animated dwe_camera sensors.
+  robot_name: race_station_light
+  # World-frame pose of the docking station.
+  station_xyz: "0.0 0.0 10.0"
+  station_rpy: "0.0 -1.57 0.0"
+  # World-frame pose of the flat terrain bottom.
+  bottom_xyz: "0.0 0.0 40.0"
+
+rendering:
+  # Stonefish simulator: [data_path, scenario_path, rate, res_x, res_y, quality]
+  rate: 100
+  res_x: 1200
+  res_y: 800
+  quality: high   # one of: low, medium, high
+
+environment:
+  ocean:
+    # Water properties: density [kg/m^3], jerlov water type [0.0..9.0],
+    # temperature [deg C].
+    density: 1023.0
+    jerlov: 0.3
+    temperature: 15.0
+    waves:
+      height: 0.0
+    particles:
+      enabled: false
+    # A single uniform background current. Set to "0 0 0" to disable.
+    uniform_current: "0.0 0.0 0.0"
+  atmosphere:
+    sun:
+      azimuth: 0.0      # degrees, 0=N, 90=E
+      elevation: 90.0    # degrees above horizon
