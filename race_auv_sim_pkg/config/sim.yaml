@@ -12,7 +12,7 @@ scenario:
   station_xyz: "0.0 0.0 10.0"
   station_rpy: "0.0 -1.57 0.0"
   # World-frame pose of the flat terrain bottom.
-  bottom_xyz: "0.0 0.0 40.0"
+  bottom_xyz: "0.0 0.0 50.0"
 
 rendering:
   # Stonefish simulator: [data_path, scenario_path, rate, res_x, res_y, quality]
@@ -26,7 +26,7 @@ environment:
     # Water properties: density [kg/m^3], jerlov water type [0.0..9.0],
     # temperature [deg C].
     density: 1023.0
-    jerlov: 0.3
+    jerlov: 0.6
     temperature: 15.0
     waves:
       height: 0.0
@@ -38,3 +38,66 @@ environment:
     sun:
       azimuth: 0.0      # degrees, 0=N, 90=E
       elevation: 90.0    # degrees above horizon
+
+# Parameters for the light_camera_overlay node. The node subscribes to the
+# light and camera odometries published by Stonefish (both in world NED),
+# the dwe_camera CameraInfo, and the raw dwe_camera image, and republishes
+# the camera image as a compressed topic with the light's local X (red),
+# Y (green), Z (blue) axes drawn on top.
+overlay:
+  enabled: true
+  light_odom_topic: "/race_station_light/stonefish/light/odometry"
+  camera_odom_topic: "/race_station_light/stonefish/dwe_camera/odometry"
+  camera_info_topic: "/race_station_light/stonefish/dwe_camera/camera_info"
+  camera_image_topic: "/race_station_light/stonefish/dwe_camera/image_color"
+  overlay_topic: "/race_station_light/stonefish/dwe_camera/light_overlay"
+  light_in_camera_odom_topic: "/race_station_light/stonefish/light_in_camera/odometry"
+  light_in_camera_odom_rate_hz: 10.0
+  camera_frame_id: "camera_odometry"           # empty -> use camera_info.header.frame_id
+  light_frame_id: "lumen_light_odometry"
+  axis_length: 0.7        # metres along each local axis to draw
+  max_odom_age: 0.5       # seconds; skip overlay if either odom is older
+  jpeg_quality: 80
+  origin_radius_px: 15
+  origin_color_bgr: [0, 255, 255]   # yellow filled circle at the light origin
+  axis_x_color_bgr: [0, 0, 255]     # red   for local +X
+  axis_y_color_bgr: [0, 255, 0]     # green for local +Y
+  axis_z_color_bgr: [255, 0, 0]     # blue  for local +Z
+  axis_thickness_px: 8
+
+# ros2 bag recording settings. When enabled, the launch file spawns a
+# `ros2 bag record` process. The bag (and its metadata) is written to
+# `<output_dir>/<bag_name>_<jerlov_tag>/`, where `jerlov_tag` formats
+# the value of `environment.ocean.jerlov` with `.` replaced by `p`
+# (e.g. 0.3 -> `jerlov_0p3`). If that directory already exists from a
+# previous run, a numeric suffix `_1`, `_2`, ... is appended to the
+# directory name (e.g. `..._jerlov_0p3_1/`) so prior bags are kept.
+# `duration_sec` (0 = no limit) sends SIGINT to the recorder after N
+# seconds so it can flush metadata and exit; the simulator continues
+# running. A `sim_info.txt` with the loaded sim.yaml and run metadata
+# is also written into the chosen directory. Set `enabled` to false
+# to skip recording.
+recording:
+  enabled: true
+  output_dir: "/home/dark3090/ros2bag/underwater_light_dataset/stonefish_sim"   # parent directory for the bag
+  bag_name: "docking_station_light_sim"               # final bag path: output_dir/bag_name
+  # Seconds to wait after the launch starts before spawning
+  # `ros2 bag record`, so the simulator (and publishers) have time to
+  # come up. 0 = start recording immediately.
+  start_delay_sec: 3.0
+  # Seconds of bag recording before sending SIGINT to the recorder
+  # (which writes metadata and exits cleanly). 0 or unset = record
+  # until the process is killed externally. Fractional values are
+  # accepted. Implemented via scripts/record_bag_with_timeout.py which
+  # runs the recorder in its own process group so the signal reaches it
+  # reliably (GNU `timeout` does not always forward SIGINT through the
+  # `ros2` CLI wrapper).
+  duration_sec: 162.0
+  topics:
+    - "/race_station_light/stonefish/light/odometry"
+    - "/race_station_light/stonefish/dwe_camera/odometry"
+    - "/race_station_light/stonefish/dwe_camera/camera_info"
+    - "/race_station_light/stonefish/dwe_camera/image_color"
+    - "/race_station_light/stonefish/dwe_camera/light_overlay"
+    - "/race_station_light/stonefish/light_in_camera/odometry"
+
