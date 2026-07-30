@@ -29,6 +29,7 @@ setup(
             'apriltag_fuser_node = race_auv_sim_pkg.apriltag_fuser_node:main',
             'ground_truth_docking_node = race_auv_sim_pkg.ground_truth_docking_node:main',
             'light_camera_overlay = race_auv_sim_pkg.light_camera_overlay_node:main',
+            'run_jerlov_sweep = race_auv_sim_pkg.run_jerlov_sweep:main',
         ],
     },
 )

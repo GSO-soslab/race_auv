@@ -97,7 +97,8 @@ class GroundTruthDockingNode(Node):
         self._latest_auv_odom: Odometry | None = None
         self._latest_station_odom: Odometry | None = None
 
-        qos = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
+        # qos = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
+        qos = QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE)
 
         self.create_subscription(Odometry, auv_odom_topic, self._auv_odom_cb, qos)
         self.create_subscription(

@@ -44,8 +44,8 @@ from vision_msgs.msg import (
 )
 from geometry_msgs.msg import Pose, PoseWithCovariance, Vector3
 
-from dwe_camera_driver.apriltag_processor import AprilTagDetector
-from dwe_camera_driver.image_processing import ImageRectifier
+from .apriltag_processor import AprilTagDetector
+from .image_processing import ImageRectifier
 
 from .apriltag_geom import (
     is_bad_rotation as _is_bad_rotation,

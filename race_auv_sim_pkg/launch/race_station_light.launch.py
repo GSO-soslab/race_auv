@@ -5,7 +5,6 @@ import yaml
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess, OpaqueFunction
-from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -76,7 +75,6 @@ def write_info():
 
 for _ in range(200):
     if os.path.isdir(bag_dir):
-        write_info()
         break
     time.sleep(0.1)
 
@@ -117,6 +115,19 @@ def _build_simulator(context, *args, **kwargs):
     rend_cfg  = cfg.get('rendering', {}) or {}
     overlay_cfg = cfg.get('overlay', {}) or {}
     rec_cfg = cfg.get('recording', {}) or {}
+
+    jerlov_raw = ocean_cfg.get('jerlov', 0.2)
+    if isinstance(jerlov_raw, (list, tuple)):
+        return [
+            ExecuteProcess(
+                cmd=[
+                    'python3', '-m', 'race_auv_sim_pkg.run_jerlov_sweep',
+                    '--config', config_path,
+                ],
+                name='run_jerlov_sweep',
+                output='screen',
+            )
+        ]
 
     sim_world  = LaunchConfiguration('sim_world').perform(context)
     robot_name = str(sim_cfg.get('robot_name', 'race_station_light'))
@@ -165,12 +176,29 @@ def _build_simulator(context, *args, **kwargs):
             ],
         ),
         Node(
+            package='image_transport',
+            executable='republish',
+            name='dwe_camera_png_republish',
+            output='screen',
+            remappings=[
+                ('in',  '/race_station_light/stonefish/dwe_camera/image_color'),
+                ('out', '/race_station_light/stonefish/dwe_camera/image_color_png'),
+            ],
+            parameters=[{
+                'in_transport': 'raw',
+                'out_transport': 'compressed',
+                'compressed.format': 'png',
+            }],
+        ),
+        Node(
             package='race_auv_sim_pkg',
             executable='light_camera_overlay',
             name='light_camera_overlay',
             output='screen',
-            condition=IfCondition(str(overlay_cfg.get('enabled', True)).lower()),
-            parameters=[overlay_cfg],
+            parameters=[
+                overlay_cfg,
+                {'use_sim_time': LaunchConfiguration('use_sim_time')},
+            ],
         ),
     ]
 
@@ -222,6 +250,11 @@ def generate_launch_description():
             'sim_world',
             default_value='race_station_light.scn',
             description='Stonefish scenario template (in world_of_stonefish/world/).',
+        ),
+        DeclareLaunchArgument(
+            'use_sim_time',
+            default_value='false',
+            description='Ignored. stonefish_ros2 does not publish /clock, so use_sim_time must be false or the sim freezes. Kept for API compatibility with the overlay node.',
         ),
         OpaqueFunction(function=_build_simulator),
     ])

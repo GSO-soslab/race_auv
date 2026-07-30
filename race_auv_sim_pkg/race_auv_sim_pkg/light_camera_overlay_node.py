@@ -8,7 +8,10 @@ publishes:
   the light's local coordinate frame drawn into the camera view;
 * a ``nav_msgs/Odometry`` on ``light_in_camera_odom_topic`` carrying the
   pose of the light expressed in the camera frame (``+X`` right,
-  ``+Y`` down, ``+Z`` forward, matching the optical convention).
+  ``+Y`` down, ``+Z`` forward, matching the optical convention);
+* a ``nav_msgs/Odometry`` on ``light_in_camera_pixel_odom_topic`` carrying
+  the light origin's 2D pixel coordinates ``(u, v)`` in the image, packed
+  as ``pose.pose.position = (u, v, 0)``.
 
 Topics (defaults assume ``robot_name=race_station_light``):
 
@@ -24,22 +27,45 @@ Topics (defaults assume ``robot_name=race_station_light``):
   with the drawn overlay.
 * ``light_in_camera_odom_topic``   - ``nav_msgs/Odometry``, light pose in
   the camera optical frame.
+* ``light_in_camera_pixel_odom_topic`` - ``nav_msgs/Odometry``, light
+  origin as ``(u, v)`` pixels in the image.
 
 The annotation is a filled circle at the light's projected origin plus
 three axis lines from that origin to the projections of points
 ``axis_length`` metres along the light's local ``+X`` (red), ``+Y``
 (green), and ``+Z`` (blue) directions, with the axis tip labelled.
-Axes whose 3D tip falls behind the camera (``z_cam <= 0``) or whose
-cached odometry is older than ``max_odom_age`` seconds are skipped
+A small filled dot with outline and ``pixel_dot_label`` is drawn on top
+of everything at the projected ``(u, v)`` to mark the pixel coordinate
+of the light origin.
+Axes whose 3D tip falls behind the camera (``z_cam <= 0``) are skipped
 instead of being drawn at a meaningless location.
+
+ Sync: image and camera info are aligned by stamp with
+``message_filters.ApproximateTimeSynchronizer`` (slop ``sync_slop_sec``
+seconds). The two odometries are received via simple subscriptions and
+the latest snapshot is used for each image, so the derived output is
+always fresh (within ~20 ms at 50 Hz camera odom). All three outputs
+(``light_overlay``, ``light_in_camera/odometry``,
+``light_in_camera/pixel_odometry``) are emitted at the same rate and
+with the same ``header.stamp`` as the image they were computed against,
+so the bag stream ``image_color / light_in_camera/odometry /
+light_in_camera/pixel_odometry`` is trivially sample-aligned. The pixel
+odometry is only emitted when the light origin projects in front of the
+camera (``z_cam > 0``); otherwise the 2D coordinate is undefined.
+
+``enabled`` (default ``True``) controls only the visual side: when
+``False`` the image draw and ``overlay_topic`` publish are skipped
+(``image_skipped`` counter ticks up), but the two derived odoms are
+still published at the image rate, so the bag still records
+``light_in_camera/odometry`` and ``light_in_camera/pixel_odometry``.
 """
 
 from __future__ import annotations
 
-import threading
 from typing import List, Optional, Tuple
 
 import cv2
+import message_filters
 import numpy as np
 import rclpy
 from cv_bridge import CvBridge
@@ -47,7 +73,6 @@ from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import CameraInfo, CompressedImage, Image
-from std_msgs.msg import Header
 
 
 def _quat_to_matrix(qx: float, qy: float, qz: float, qw: float) -> np.ndarray:
@@ -124,11 +149,6 @@ def _project(p_cam: np.ndarray, K: np.ndarray) -> Optional[Tuple[int, int]]:
     return int(round(u)), int(round(v))
 
 
-def _stamp_age_sec(stamp, now_ns: int) -> float:
-    msg_ns = stamp.sec * 1_000_000_000 + stamp.nanosec
-    return (now_ns - msg_ns) * 1e-9
-
-
 def _bgr_param(node: Node, name: str, default: List[int]) -> Tuple[int, int, int]:
     raw = node.get_parameter(name).value
     if not isinstance(raw, (list, tuple)) or len(raw) != 3:
@@ -140,6 +160,7 @@ class LightCameraOverlayNode(Node):
     def __init__(self) -> None:
         super().__init__('light_camera_overlay')
 
+        self.declare_parameter('enabled', True)
         self.declare_parameter('light_odom_topic',
                                '/race_station_light/stonefish/light/odometry')
         self.declare_parameter('camera_odom_topic',
@@ -152,11 +173,13 @@ class LightCameraOverlayNode(Node):
                                '/race_station_light/light_overlay')
         self.declare_parameter('light_in_camera_odom_topic',
                                '/race_station_light/light_in_camera/odometry')
-        self.declare_parameter('light_in_camera_odom_rate_hz', 10.0)
+        self.declare_parameter('light_in_camera_pixel_odom_topic',
+                               '/race_station_light/light_in_camera/pixel_odometry')
+        self.declare_parameter('light_in_camera_pixel_frame_id', 'image_pixel_plane')
+        self.declare_parameter('light_in_camera_pixel_child_frame_id', 'light_pixel')
         self.declare_parameter('camera_frame_id', '')
         self.declare_parameter('light_frame_id', 'dwe_light')
         self.declare_parameter('axis_length', 0.5)
-        self.declare_parameter('max_odom_age', 0.5)
         self.declare_parameter('jpeg_quality', 80)
         self.declare_parameter('origin_radius_px', 8)
         self.declare_parameter('origin_color_bgr', [0, 255, 255])
@@ -164,15 +187,26 @@ class LightCameraOverlayNode(Node):
         self.declare_parameter('axis_y_color_bgr', [0, 255, 0])
         self.declare_parameter('axis_z_color_bgr', [255, 0, 0])
         self.declare_parameter('axis_thickness_px', 3)
-
-        self._light_odom: Optional[Odometry] = None
-        self._camera_odom: Optional[Odometry] = None
-        self._camera_info: Optional[CameraInfo] = None
-        self._lock = threading.Lock()
+        self.declare_parameter('pixel_dot_radius_px', 5)
+        self.declare_parameter('pixel_dot_color_bgr', [255, 255, 255])
+        self.declare_parameter('pixel_dot_outline_thickness_px', 2)
+        self.declare_parameter('pixel_dot_outline_color_bgr', [0, 0, 0])
+        self.declare_parameter('pixel_dot_label', 'uv')
+        self.declare_parameter('pixel_dot_label_scale', 0.5)
+        self.declare_parameter('pixel_dot_label_thickness_px', 1)
+        self.declare_parameter('sync_slop_sec', 0.05)
+        self.declare_parameter('sync_queue_size', 10)
         self._bridge = CvBridge()
         self._frames_seen = 0
         self._frames_published = 0
         self._frames_overlaid = 0
+        self._frames_image_skipped = 0
+        self._frames_synced = 0
+        self._light_in_cam_published = 0
+        self._light_in_cam_pixel_published = 0
+        self._dropped_no_odom = 0
+        self._latest_light_odom: Optional[Odometry] = None
+        self._latest_camera_odom: Optional[Odometry] = None
 
         sensor_qos = QoSProfile(
             reliability=ReliabilityPolicy.RELIABLE,
@@ -190,22 +224,36 @@ class LightCameraOverlayNode(Node):
             depth=1,
         )
 
+        self._image_sub = message_filters.Subscriber(
+            self, Image, self.get_parameter('camera_image_topic').value,
+            qos_profile=sensor_qos,
+        )
+        self._camera_info_sub = message_filters.Subscriber(
+            self, CameraInfo, self.get_parameter('camera_info_topic').value,
+            qos_profile=info_qos,
+        )
+
         self._light_odom_sub = self.create_subscription(
             Odometry, self.get_parameter('light_odom_topic').value,
-            self._on_light_odom, sensor_qos,
+            self._light_odom_cb, qos_profile=sensor_qos,
         )
         self._camera_odom_sub = self.create_subscription(
             Odometry, self.get_parameter('camera_odom_topic').value,
-            self._on_camera_odom, sensor_qos,
+            self._camera_odom_cb, qos_profile=sensor_qos,
         )
-        self._camera_info_sub = self.create_subscription(
-            CameraInfo, self.get_parameter('camera_info_topic').value,
-            self._on_camera_info, info_qos,
+
+        slop = float(self.get_parameter('sync_slop_sec').value)
+        queue_size = int(self.get_parameter('sync_queue_size').value)
+        self._sync = message_filters.ApproximateTimeSynchronizer(
+            (
+                self._image_sub,
+                self._camera_info_sub,
+            ),
+            queue_size,
+            slop,
         )
-        self._image_sub = self.create_subscription(
-            Image, self.get_parameter('camera_image_topic').value,
-            self._on_image, sensor_qos,
-        )
+        self._sync.registerCallback(self._on_synced)
+
         self._overlay_pub = self.create_publisher(
             CompressedImage, self.get_parameter('overlay_topic').value,
             pub_qos,
@@ -214,99 +262,64 @@ class LightCameraOverlayNode(Node):
             Odometry, self.get_parameter('light_in_camera_odom_topic').value,
             pub_qos,
         )
-        rate = float(self.get_parameter('light_in_camera_odom_rate_hz').value)
-        if rate > 0.0:
-            self._light_in_cam_odom_timer = self.create_timer(
-                1.0 / rate, self._publish_light_in_camera_odom,
-            )
-        else:
-            self._light_in_cam_odom_timer = None
-
-        self.get_logger().info(
-            f"light_camera_overlay up: image<={self.get_parameter('camera_image_topic').value}, "
-            f"info<={self.get_parameter('camera_info_topic').value}, "
-            f"out=>{self.get_parameter('overlay_topic').value}"
+        self._light_in_cam_pixel_pub = self.create_publisher(
+            Odometry, self.get_parameter('light_in_camera_pixel_odom_topic').value,
+            pub_qos,
         )
 
-    def _on_light_odom(self, msg: Odometry) -> None:
-        with self._lock:
-            self._light_odom = msg
+        self.get_logger().info(
+            f"light_camera_overlay up: enabled={bool(self.get_parameter('enabled').value)}, "
+            f"image<={self.get_parameter('camera_image_topic').value}, "
+            f"info<={self.get_parameter('camera_info_topic').value}, "
+            f"light_odom<={self.get_parameter('light_odom_topic').value} (latest snapshot), "
+            f"camera_odom<={self.get_parameter('camera_odom_topic').value} (latest snapshot), "
+            f"out=>{self.get_parameter('overlay_topic').value}, "
+            f"light_in_cam_odom=>{self.get_parameter('light_in_camera_odom_topic').value}, "
+            f"light_in_cam_pixel=>{self.get_parameter('light_in_camera_pixel_odom_topic').value}, "
+            f"slop={slop:.3f}s queue={queue_size}"
+        )
 
-    def _on_camera_odom(self, msg: Odometry) -> None:
-        with self._lock:
-            self._camera_odom = msg
+    def _light_odom_cb(self, msg: Odometry) -> None:
+        self._latest_light_odom = msg
 
-    def _on_camera_info(self, msg: CameraInfo) -> None:
-        with self._lock:
-            self._camera_info = msg
+    def _camera_odom_cb(self, msg: Odometry) -> None:
+        self._latest_camera_odom = msg
 
-    def _publish_light_in_camera_odom(self) -> None:
-        with self._lock:
-            light_odom = self._light_odom
-            camera_odom = self._camera_odom
-            camera_info = self._camera_info
-
-        if light_odom is None or camera_odom is None:
-            return
-
-        max_age = float(self.get_parameter('max_odom_age').value)
-        now_ns = self.get_clock().now().nanoseconds
-        if _stamp_age_sec(light_odom.header.stamp, now_ns) > max_age:
-            return
-        if _stamp_age_sec(camera_odom.header.stamp, now_ns) > max_age:
-            return
-
-        T_world_light = _odom_to_T(light_odom)
-        T_world_cam = _odom_to_T(camera_odom)
-        T_cam_light = np.linalg.inv(T_world_cam) @ T_world_light
-
-        p = T_cam_light[:3, 3]
-        q = _matrix_to_quat(T_cam_light[:3, :3])
-
-        cam_frame = self.get_parameter('camera_frame_id').value
-        if not cam_frame and camera_info is not None and camera_info.header.frame_id:
-            cam_frame = camera_info.header.frame_id
-        if not cam_frame:
-            cam_frame = 'camera_optical_frame'
-        light_frame = self.get_parameter('light_frame_id').value or 'dwe_light'
-
-        out = Odometry()
-        out.header.stamp = light_odom.header.stamp
-        out.header.frame_id = cam_frame
-        out.child_frame_id = light_frame
-        out.pose.pose.position.x = float(p[0])
-        out.pose.pose.position.y = float(p[1])
-        out.pose.pose.position.z = float(p[2])
-        out.pose.pose.orientation.x = float(q[0])
-        out.pose.pose.orientation.y = float(q[1])
-        out.pose.pose.orientation.z = float(q[2])
-        out.pose.pose.orientation.w = float(q[3])
-        out.pose.covariance = [0.0] * 36
-        out.twist.covariance = [0.0] * 36
-        self._light_in_cam_odom_pub.publish(out)
-
-    def _on_image(self, msg: Image) -> None:
+    def _on_synced(
+        self,
+        image_msg: Image,
+        camera_info: CameraInfo,
+    ) -> None:
         self._frames_seen += 1
-        try:
-            cv_image = self._bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
-        except Exception as exc:
+        self._frames_synced += 1
+
+        if self._latest_light_odom is None or self._latest_camera_odom is None:
+            self._dropped_no_odom += 1
             self.get_logger().warn(
-                f"cv_bridge failed ({msg.encoding}): {exc}",
+                "no odom received yet; overlay skipped",
                 throttle_duration_sec=2.0,
             )
             return
 
-        with self._lock:
-            light_odom = self._light_odom
-            camera_odom = self._camera_odom
-            camera_info = self._camera_info
+        light_odom = self._latest_light_odom
+        camera_odom = self._latest_camera_odom
 
-        drew_overlay = False
-        if light_odom is not None and camera_odom is not None and camera_info is not None:
+        try:
+            cv_image = self._bridge.imgmsg_to_cv2(image_msg, desired_encoding='bgr8')
+        except Exception as exc:
+            self.get_logger().warn(
+                f"cv_bridge failed ({image_msg.encoding}): {exc}",
+                throttle_duration_sec=2.0,
+            )
+            return
+
+        u_origin: Optional[Tuple[int, int]] = None
+        if bool(self.get_parameter('enabled').value):
             K = _k_matrix(camera_info)
+            drew_overlay = False
             if float(K[0, 0]) > 1e-6 and float(K[1, 1]) > 1e-6:
                 try:
-                    drew_overlay = self._draw_overlay(
+                    drew_overlay, u_origin = self._draw_overlay(
                         cv_image, light_odom, camera_odom, K,
                     )
                 except Exception as exc:
@@ -319,14 +332,38 @@ class LightCameraOverlayNode(Node):
                     "camera_info K is zero; overlay skipped",
                     throttle_duration_sec=5.0,
                 )
+            self._publish_compressed(cv_image, image_msg.header, drew_overlay)
         else:
-            self.get_logger().warn(
-                f"waiting for odom/info (light={light_odom is not None}, "
-                f"cam={camera_odom is not None}, info={camera_info is not None})",
-                throttle_duration_sec=5.0,
+            u_origin = self._project_light_origin(
+                light_odom, camera_odom, _k_matrix(camera_info),
             )
+            self._frames_image_skipped += 1
 
-        self._publish_compressed(cv_image, msg.header, drew_overlay)
+        self._publish_light_in_camera_odom(
+            light_odom, camera_odom, camera_info, image_msg.header.stamp,
+        )
+        self._light_in_cam_published += 1
+        self._publish_light_in_camera_pixel_odom(
+            u_origin, image_msg.header.stamp,
+        )
+
+    def _project_light_origin(
+        self,
+        light_odom: Odometry,
+        camera_odom: Odometry,
+        K: np.ndarray,
+    ) -> Optional[Tuple[int, int]]:
+        if float(K[0, 0]) <= 1e-6 or float(K[1, 1]) <= 1e-6:
+            return None
+        T_world_light = _odom_to_T(light_odom)
+        T_world_cam = _odom_to_T(camera_odom)
+        T_cam_world = np.linalg.inv(T_world_cam)
+        light_origin_world = T_world_light[:3, 3]
+        p_origin_cam = T_cam_world @ np.array(
+            [light_origin_world[0], light_origin_world[1],
+             light_origin_world[2], 1.0]
+        )
+        return _project(p_origin_cam[:3], K)
 
     def _draw_overlay(
         self,
@@ -334,22 +371,7 @@ class LightCameraOverlayNode(Node):
         light_odom: Odometry,
         camera_odom: Odometry,
         K: np.ndarray,
-    ) -> bool:
-        max_age = float(self.get_parameter('max_odom_age').value)
-        now_ns = self.get_clock().now().nanoseconds
-        if _stamp_age_sec(light_odom.header.stamp, now_ns) > max_age:
-            self.get_logger().warn(
-                "light odom stale; skipping overlay",
-                throttle_duration_sec=2.0,
-            )
-            return False
-        if _stamp_age_sec(camera_odom.header.stamp, now_ns) > max_age:
-            self.get_logger().warn(
-                "camera odom stale; skipping overlay",
-                throttle_duration_sec=2.0,
-            )
-            return False
-
+    ) -> Tuple[bool, Optional[Tuple[int, int]]]:
         T_world_light = _odom_to_T(light_odom)
         T_world_cam = _odom_to_T(camera_odom)
         T_cam_world = np.linalg.inv(T_world_cam)
@@ -370,13 +392,28 @@ class LightCameraOverlayNode(Node):
         radius = int(self.get_parameter('origin_radius_px').value)
         thickness = int(self.get_parameter('axis_thickness_px').value)
 
+        dot_radius = int(self.get_parameter('pixel_dot_radius_px').value)
+        dot_color = _bgr_param(self, 'pixel_dot_color_bgr', [255, 255, 255])
+        dot_outline_color = _bgr_param(
+            self, 'pixel_dot_outline_color_bgr', [0, 0, 0],
+        )
+        dot_outline_thickness = int(
+            self.get_parameter('pixel_dot_outline_thickness_px').value
+        )
+        dot_label = self.get_parameter('pixel_dot_label').value
+        dot_label_scale = float(
+            self.get_parameter('pixel_dot_label_scale').value
+        )
+        dot_label_thickness = int(
+            self.get_parameter('pixel_dot_label_thickness_px').value
+        )
+
         drew = False
         if u_origin is not None:
             cv2.circle(img, u_origin, radius, origin_color, -1, lineType=cv2.LINE_AA)
             cv2.circle(img, u_origin, radius, (0, 0, 0), 1, lineType=cv2.LINE_AA)
             drew = True
 
-        if u_origin is not None:
             axes = (
                 (light_R_world[:, 0], axis_x_color, 'X'),
                 (light_R_world[:, 1], axis_y_color, 'Y'),
@@ -397,9 +434,101 @@ class LightCameraOverlayNode(Node):
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA,
                 )
                 drew = True
-        return drew
 
-    def _publish_compressed(self, img: np.ndarray, header: Header, drew: bool) -> None:
+            if dot_radius > 0:
+                cv2.circle(
+                    img, u_origin, dot_radius, dot_color, -1,
+                    lineType=cv2.LINE_AA,
+                )
+                if dot_outline_thickness > 0:
+                    cv2.circle(
+                        img, u_origin, dot_radius, dot_outline_color,
+                        dot_outline_thickness, lineType=cv2.LINE_AA,
+                    )
+                if dot_label:
+                    cv2.putText(
+                        img, dot_label,
+                        (u_origin[0] + dot_radius + 4,
+                         u_origin[1] - dot_radius - 4),
+                        cv2.FONT_HERSHEY_SIMPLEX, dot_label_scale,
+                        dot_outline_color, dot_label_thickness + 1,
+                        cv2.LINE_AA,
+                    )
+                    cv2.putText(
+                        img, dot_label,
+                        (u_origin[0] + dot_radius + 4,
+                         u_origin[1] - dot_radius - 4),
+                        cv2.FONT_HERSHEY_SIMPLEX, dot_label_scale,
+                        dot_color, dot_label_thickness,
+                        cv2.LINE_AA,
+                    )
+        return drew, u_origin
+
+    def _publish_light_in_camera_odom(
+        self,
+        light_odom: Odometry,
+        camera_odom: Odometry,
+        camera_info: CameraInfo,
+        image_stamp,
+    ) -> None:
+        T_world_light = _odom_to_T(light_odom)
+        T_world_cam = _odom_to_T(camera_odom)
+        T_cam_light = np.linalg.inv(T_world_cam) @ T_world_light
+
+        p = T_cam_light[:3, 3]
+        q = _matrix_to_quat(T_cam_light[:3, :3])
+
+        cam_frame = self.get_parameter('camera_frame_id').value
+        if not cam_frame and camera_info.header.frame_id:
+            cam_frame = camera_info.header.frame_id
+        if not cam_frame:
+            cam_frame = 'camera_optical_frame'
+        light_frame = self.get_parameter('light_frame_id').value or 'dwe_light'
+
+        out = Odometry()
+        out.header.stamp = image_stamp
+        out.header.frame_id = cam_frame
+        out.child_frame_id = light_frame
+        out.pose.pose.position.x = float(p[0])
+        out.pose.pose.position.y = float(p[1])
+        out.pose.pose.position.z = float(p[2])
+        out.pose.pose.orientation.x = float(q[0])
+        out.pose.pose.orientation.y = float(q[1])
+        out.pose.pose.orientation.z = float(q[2])
+        out.pose.pose.orientation.w = float(q[3])
+        out.pose.covariance = [0.0] * 36
+        out.twist.covariance = [0.0] * 36
+        self._light_in_cam_odom_pub.publish(out)
+
+    def _publish_light_in_camera_pixel_odom(
+        self,
+        u_origin: Optional[Tuple[int, int]],
+        image_stamp,
+    ) -> None:
+        if u_origin is None:
+            return
+        parent_frame = (
+            self.get_parameter('light_in_camera_pixel_frame_id').value
+            or 'image_pixel_plane'
+        )
+        child_frame = (
+            self.get_parameter('light_in_camera_pixel_child_frame_id').value
+            or 'light_pixel'
+        )
+        out = Odometry()
+        out.header.stamp = image_stamp
+        out.header.frame_id = parent_frame
+        out.child_frame_id = child_frame
+        out.pose.pose.position.x = float(u_origin[0])
+        out.pose.pose.position.y = float(u_origin[1])
+        out.pose.pose.position.z = 0.0
+        out.pose.pose.orientation.w = 1.0
+        out.pose.covariance = [0.0] * 36
+        out.twist.covariance = [0.0] * 36
+        self._light_in_cam_pixel_pub.publish(out)
+        self._light_in_cam_pixel_published += 1
+
+    def _publish_compressed(self, img: np.ndarray, header, drew: bool) -> None:
         try:
             quality = int(self.get_parameter('jpeg_quality').value)
             encode_params = [int(cv2.IMWRITE_JPEG_QUALITY), quality]
@@ -417,9 +546,14 @@ class LightCameraOverlayNode(Node):
                 self._frames_overlaid += 1
             if self._frames_published == 1 or self._frames_published % 30 == 0:
                 self.get_logger().info(
-                    f"overlay stats: seen={self._frames_seen} "
+                    f"overlay stats: synced={self._frames_synced} "
+                    f"seen={self._frames_seen} "
                     f"published={self._frames_published} "
-                    f"overlaid={self._frames_overlaid}"
+                    f"overlaid={self._frames_overlaid} "
+                    f"image_skipped={self._frames_image_skipped} "
+                    f"light_in_cam_pub={self._light_in_cam_published} "
+                    f"pixel_pub={self._light_in_cam_pixel_published} "
+                    f"skipped_no_odom={self._dropped_no_odom}"
                 )
         except Exception as exc:
             self.get_logger().warn(
