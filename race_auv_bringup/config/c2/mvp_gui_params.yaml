@@ -42,7 +42,7 @@ ros_interface_node:
     #----------------------------
     # Topics
     #----------------------------
-    topic_ns: "/race_station/mvp_c2_commander/remote/id_2/"
+    topic_ns: "/race_topside/mvp_c2_commander/remote/id_2/"
     ## pose
     poses_source: "odometry"
     geo_pose_source: "geopose"
@@ -60,11 +60,11 @@ ros_interface_node:
     #----------------------------
     # Services
     #----------------------------
-    service_ns: "/race_station/mvp_c2_commander/remote/id_2/"
+    service_ns: "/race_topside/mvp_c2_commander/remote/id_2/"
     helm_state_set: "mvp_helm/change_state"
     controller_state_set: "controller/set"
     pub_waypoints_service: "mvp_helm/set_waypoints"
     set_power_service: "gpio_manager/set_power/"
     
     # Name of the node to fetch dynamic launch/power configurations from
-    c2_commander_node: "/race_station/mvp_c2_commander"
+    c2_commander_node: "/race_topside/mvp_c2_commander"

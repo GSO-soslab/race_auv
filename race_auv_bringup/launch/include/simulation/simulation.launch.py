@@ -35,7 +35,8 @@ def generate_launch_description():
             executable="stonefish_simulator",
             name="stonefish_simulator",
             # output="screen",
-            arguments=[simulation_data, scenario_desc, simulation_rate, window_res_x, window_res_y, rendering_quality]
+            arguments=[simulation_data, scenario_desc, simulation_rate, window_res_x, window_res_y, rendering_quality],
+            parameters=[stonefish_driver_param_file]
         ),
 
         Node(

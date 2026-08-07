@@ -1,4 +1,4 @@
-frame_id: "world"
+frame_id: "odom"
 
 waypoints:
  - {x: 0,  y: 25,  z: -10, u: 0.7}

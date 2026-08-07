@@ -5,6 +5,8 @@ from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import Node
+
 import time
 
 
@@ -13,6 +15,7 @@ import time
 def generate_launch_description():
     arg_robot_name = 'race_auv'
     robot_bringup = arg_robot_name + '_bringup'
+    robot_description = arg_robot_name + '_description'
     sim_tagdet_bringup = arg_robot_name + '_sim_pkg'
     arg_station_name = 'race_station'
     station_bringup = arg_station_name + '_bringup'
@@ -55,13 +58,13 @@ def generate_launch_description():
 
     # c2 topside
     mvp_c2_top = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource([os.path.join(get_package_share_directory(robot_bringup), 'launch','include','mvp_c2_topside.launch.py')]),
+        PythonLaunchDescriptionSource([os.path.join(get_package_share_directory(robot_bringup), 'launch','include','simulation','mvp_c2_topside_sim.launch.py')]),
         launch_arguments = {'arg_robot_name': arg_robot_name}.items()  
     )
 
     # c2 vehicle
     mvp_c2_vehicle = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource([os.path.join(get_package_share_directory(robot_bringup), 'launch','include','mvp_c2_vehicle.launch.py')]),
+        PythonLaunchDescriptionSource([os.path.join(get_package_share_directory(robot_bringup), 'launch','include','simulation','mvp_c2_vehicle_sim.launch.py')]),
         launch_arguments = {'arg_robot_name': arg_robot_name}.items()  
     )
 
@@ -88,17 +91,27 @@ def generate_launch_description():
         PythonLaunchDescriptionSource([os.path.join(get_package_share_directory(station_bringup), 'launch','bringup_simulation.launch.py')]),
     )
 
+    #Rviz
+    rviz_config_dir = os.path.join( get_package_share_directory(robot_description), 'rviz', 'config.rviz' )
 
+    rviz = Node(
+            package='rviz2',
+            executable='rviz2',
+            name='rviz2',
+            arguments=['-d', [rviz_config_dir]],
+        )
+    
     return LaunchDescription([
         simulation,
         localization,
         description,
         mvp_control,
         mvp_mission,
-        # joy,
+        joy,
         # mvp_c2_top,
         # mvp_c2_vehicle,
         apriltag_pipeline,
-        ground_truth_pose,
-        station_simulation
+        # ground_truth_pose,
+        # station_simulation
+        rviz
     ])

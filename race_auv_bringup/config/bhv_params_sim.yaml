@@ -10,10 +10,10 @@ bhv_teleop:
   ##LT resets desired states to zero for all.
   tele_s_surge: 1.0
   tele_s_sway: 1.0
-  tele_d_yaw: 10.0 
-  tele_d_pitch: 10.0
+  tele_d_yaw: 5.0 
+  tele_d_pitch: 5.0
   tele_d_depth: 0.2
-  no_joy_timeout: 10.0
+  no_joy_timeout: 100.0
 
 # bhv_direct_control:
 #   ########################################
@@ -75,10 +75,14 @@ bhv_path_following:
   turning_surge_velocity: 0.2
   turning_angle_sector: 1.04 #rad
 
-  waypoint_x: [30.0, 0.0, 15.0]
-  waypoint_y: [0.0, 20.0, 30.0]
-  waypoint_z: [4.0, 5.0, 3.0]
-  waypoint_u: [0.5, 0.8, 0.8]
+  # waypoint_x: [30.0, 0.0, 15.0]
+  # waypoint_y: [0.0, 20.0, 30.0]
+  # waypoint_z: [4.0, 5.0, 3.0]
+  # waypoint_u: [0.5, 0.8, 0.8]
+  waypoint_x: [10.0, 10.0]
+  waypoint_y: [0.0, 0.0]
+  waypoint_z: [2.0, 10.0]
+  waypoint_u: [0.5, 0.5]
 
   waypoint_file_package: race_auv_bringup
   waypoint_path: config/go_to_list/

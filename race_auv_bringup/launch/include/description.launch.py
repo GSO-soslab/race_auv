@@ -40,13 +40,26 @@ def generate_launch_description():
             parameters=[{'robot_description' : robot_desc},
                         {'frame_prefix': robot_name +'/'},
                         {'use_sim_time': use_sim_time}],
-           ),
+        ),
+
+        Node(
+            package='tf2_ros',
+            executable='static_transform_publisher',
+            name='odom2world',
+            arguments = ["0.0", "0.0", "0.0", "0.0", "0.0", "0.0", robot_name+'/odom', robot_name+'/world']    
+        ),
 
         Node(
             package='tf2_ros',
             executable='static_transform_publisher',
             name='world2ned',
             parameters=[{'use_sim_time': use_sim_time}],
-            arguments = ["0.0", "0.0", "0.0", "1.571", "0.0", "3.1415", robot_name+'/world', robot_name+'/world_ned']    
+            # arguments = ["0.0", "0.0", "0.0", "1.571", "0.0", "3.1415", robot_name+'/world', robot_name+'/world_ned']    
+            arguments = [
+                '--x', '0.0', '--y', '0.0', '--z', '0.0',
+                '--roll', '3.1415', '--pitch', '0.0', '--yaw', '1.571',
+                '--frame-id', robot_name + '/world',
+                '--child-frame-id', robot_name + '/world_ned',
+            ]
         ),
 ])

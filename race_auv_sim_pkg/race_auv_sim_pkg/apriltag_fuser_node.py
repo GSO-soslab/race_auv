@@ -61,16 +61,23 @@ def _pose_to_matrix(pose) -> np.ndarray:
     return T
 
 
-def _parse_tag_id(det_id: str) -> Optional[int]:
-    """Detection3D.id is ``f"{family}:{tag_id}"``; return the int, else None."""
+def _parse_tag_family_id(det_id: str) -> Optional[Tuple[str, int]]:
+    """Parse ``Detection3D.id`` into ``(family, tag_id)``.
+
+    ``Detection3D.id`` is ``f"{family}:{tag_id}"`` (e.g. ``"tag36h11:5"``).
+    Returns ``None`` for malformed ids. The numeric ``tag_id`` is
+    per-family: two tags in different families may share the same id.
+    """
     if not det_id:
         return None
-    if ":" in det_id:
-        suffix = det_id.rsplit(":", 1)[-1]
-    else:
-        suffix = det_id
+    if ":" not in det_id:
+        return None
+    family_part, _, id_part = det_id.rpartition(":")
+    family = family_part.strip()
+    if not family:
+        return None
     try:
-        return int(suffix)
+        return family, int(id_part)
     except (TypeError, ValueError):
         return None
 
@@ -134,7 +141,8 @@ class AprilTagFuserNode(Node):
         )
 
         # --- Load URDF tag transforms ---
-        self._tag_transforms: Dict[int, TagTransform] = {}
+        # Keyed by (family, tag_id) since tag ids are per-family.
+        self._tag_transforms: Dict[Tuple[str, int], TagTransform] = {}
         self._load_tag_transforms()
 
         # --- TF ---
@@ -157,9 +165,11 @@ class AprilTagFuserNode(Node):
         else:
             self.get_logger().info("PoseStamped mirror disabled (output_pose_topic empty).")
 
-        # --- Detection cache: (source_topic, tag_id) -> (stamp_sec, frame, T_cam_to_tag) ---
+        # --- Detection cache: (source_topic, family, tag_id) -> (stamp_sec, frame, T_cam_to_tag) ---
+        # tag_id is per-family; the (family, tag_id) tuple uniquely
+        # identifies a tag across all configured families and sizes.
         self._lock = threading.Lock()
-        self._latest: Dict[Tuple[str, int], Tuple[float, str, np.ndarray]] = {}
+        self._latest: Dict[Tuple[str, str, int], Tuple[float, str, np.ndarray]] = {}
 
         # --- Subscriptions (one per detection topic) ---
         qos = QoSProfile(
@@ -260,9 +270,10 @@ class AprilTagFuserNode(Node):
             stamp_sec = float(stamp.sec) + float(stamp.nanosec) * 1e-9
             cam_frame = msg.header.frame_id or ""
             for det in msg.detections:
-                tag_id = _parse_tag_id(det.id)
-                if tag_id is None:
+                parsed = _parse_tag_family_id(det.id)
+                if parsed is None:
                     continue
+                family, tag_id = parsed
                 if not det.results or det.results[0].pose is None:
                     continue
                 try:
@@ -277,12 +288,12 @@ class AprilTagFuserNode(Node):
                     continue
                 T[:3, :3] = sanitize_rotation(T[:3, :3])
                 with self._lock:
-                    self._latest[(topic, tag_id)] = (stamp_sec, cam_frame, T)
+                    self._latest[(topic, family, tag_id)] = (stamp_sec, cam_frame, T)
         return cb
 
     @staticmethod
     def _fallback_solve(
-        pairs: List[Tuple[np.ndarray, np.ndarray, int]]
+        pairs: List[Tuple[np.ndarray, np.ndarray, Tuple[str, int]]]
     ) -> Optional[np.ndarray]:
         """Average per-tag T_ref_to_base estimates when joint solve unavailable.
 
@@ -326,8 +337,8 @@ class AprilTagFuserNode(Node):
         with self._lock:
             snapshot = list(self._latest.items())
 
-        # Build (T_ref_to_tag, T_base_to_tag, tag_id) for each fresh detection.
-        pairs: List[Tuple[np.ndarray, np.ndarray, int]] = []
+        # Build (T_ref_to_tag, T_base_to_tag, (family, tag_id)) for each fresh detection.
+        pairs: List[Tuple[np.ndarray, np.ndarray, Tuple[str, int]]] = []
         stale = 0
         for key, (stamp_sec, cam_frame, T_cam_to_tag) in snapshot:
             if (now - stamp_sec) > max_age:
@@ -355,9 +366,13 @@ class AprilTagFuserNode(Node):
                 continue
             T_ref_to_cam = _tf_to_matrix(tf_stamped)
             T_ref_to_tag = T_ref_to_cam @ T_cam_to_tag
-            tag_id = key[1]
-            T_base_to_tag = self._tag_transforms[tag_id].T_base_to_tag
-            pairs.append((T_ref_to_tag, T_base_to_tag, tag_id))
+            _topic, family, tag_id = key
+            tag_key = (family, tag_id)
+            if tag_key not in self._tag_transforms:
+                # No URDF link for this tag; skip rather than crash.
+                continue
+            T_base_to_tag = self._tag_transforms[tag_key].T_base_to_tag
+            pairs.append((T_ref_to_tag, T_base_to_tag, tag_key))
 
         # Drop stale entries from the cache so they don't accumulate forever.
         if stale:

@@ -2,25 +2,34 @@
 
 A single instance of this node handles one camera. It subscribes to either a
 raw ``sensor_msgs/Image`` or a ``sensor_msgs/CompressedImage`` topic, plus an
-optional ``sensor_msgs/CameraInfo`` topic, runs the upstream
-``dwe_camera_driver.apriltag_processor.AprilTagDetector`` on each image, and
-publishes:
+optional ``sensor_msgs/CameraInfo`` topic, runs the
+``apriltag_processor.AprilTagDetector`` on each image, and publishes:
 
 * ``vision_msgs/Detection3DArray`` on ``output_detections_topic`` with one
-  entry per detected tag. ``Detection3D.id`` is ``f"{family}:{tag_id}"`` and
-  ``results[0].pose.pose`` is the tag's pose in the camera frame.
+  entry per detected tag. ``Detection3D.id`` is ``f"{family}:{tag_id}"``
+  and ``results[0].pose.pose`` is the tag's pose in the camera frame.
 * An annotated ``sensor_msgs/Image`` on ``output_image_topic``.
-* TF: every detected tag as ``tag_frame_prefix<tag_id>`` child of the camera
-  optical frame.
+* TF: every detected tag as ``apriltag<family>_<tag_id>`` child of the
+  camera optical frame. The frame name mirrors the URDF link name so the
+  fuser can look up ``T_base_to_tag`` directly.
 
 This node **never** publishes ``object_base``. The fused
 ``reference_frame -> object_base`` TF is owned by
 ``apriltag_fuser_node`` so multi-camera setups do not fight over the frame.
 
-When ``info_topic`` is empty, the node falls back to intrinsics supplied via
-ROS parameters (typically populated by the launch file from
-``config/apriltag.yaml``). This is the path used for the DWE camera driver,
-which does not publish ``CameraInfo`` by default.
+Multi-family / multi-size tags
+------------------------------
+The detector can handle tags from any number of families and sizes. The
+YAML ``tags:`` list drives a runtime grouping step: tags are bucketed by
+``(family, tag_size)`` and one ``AprilTagDetector`` is created per bucket.
+This is required because ``pupil_apriltags.Detector`` only supports a
+single ``tag_size`` per ``detect()`` call. Tags in the same family but at
+different sizes are intentionally handled by separate detector instances.
+
+When ``info_topic`` is empty, the node falls back to intrinsics supplied
+via ROS parameters (typically populated by the launch file from
+``config/apriltag.yaml``). This is the path used for the DWE camera
+driver, which does not publish ``CameraInfo`` by default.
 """
 
 from __future__ import annotations
@@ -81,6 +90,16 @@ def _as_bool(v, default: bool = False) -> bool:
         return default
 
 
+def _family_short(family: str) -> str:
+    """``"tag36h11"`` -> ``"36h11"``. Used in TF frames and on-image labels."""
+    return family[3:] if family.startswith("tag") else family
+
+
+def _tf_frame_name(family: str, tag_id: int) -> str:
+    """Build the TF frame / URDF link name for a tag: ``apriltag<family>_<id>``."""
+    return f"apriltag{_family_short(family)}_{int(tag_id)}"
+
+
 class AprilTagDetectorNode(Node):
     """Per-camera detector: image (+ optional CameraInfo) -> detections + TF."""
 
@@ -93,6 +112,9 @@ class AprilTagDetectorNode(Node):
         self.declare_parameter("image_topic", "")
         self.declare_parameter("info_topic", "")
         self.declare_parameter("camera_frame", "")
+        # NOTE: deprecated. TF frames are now derived from the family
+        # (``apriltag<family>_<id>``). This parameter is accepted for
+        # backward compatibility but no longer affects frame names.
         self.declare_parameter("tag_frame_prefix", "apriltag")
         self.declare_parameter("output_image_topic", "apriltag_detection/image")
         self.declare_parameter("output_detections_topic", "apriltag_detection/detections3d")
@@ -130,7 +152,9 @@ class AprilTagDetectorNode(Node):
         self._latest_bgr: Optional[np.ndarray] = None
         self._latest_stamp = None
         self._info_msg: Optional[CameraInfo] = None
-        self._detectors: Dict[Tuple[str, int], AprilTagDetector] = {}
+        # Keyed by (family, tag_size). One detector per group because
+        # pupil_apriltags.Detector only supports a single tag_size per call.
+        self._detectors: Dict[Tuple[str, float], AprilTagDetector] = {}
         self._rectifier: Optional[ImageRectifier] = None
         self._image_size: Optional[Tuple[int, int]] = None
         self._ready = False
@@ -181,11 +205,12 @@ class AprilTagDetectorNode(Node):
             f"apriltag_detector ready: image_topic={image_topic} "
             f"info_topic={info_topic or '<yaml intrinsics>'} "
             f"transport={transport} rate={rate} Hz "
-            f"tags={len(self._tags_config)}"
+            f"tags={len(self._tags_config)} groups={len(self._detectors)}"
         )
 
     # ------------------------------------------------------------------ YAML
     def _load_yaml_config(self) -> None:
+        """Read ``tags`` and ``detector_defaults`` blocks from the config YAML."""
         cfg_path = str(self.get_parameter("config_yaml").value or "")
         if not cfg_path:
             self.get_logger().warn(
@@ -217,6 +242,20 @@ class AprilTagDetectorNode(Node):
         self.get_logger().info(
             f"Configured {len(self._tags_config)} tags from {cfg_path}."
         )
+
+    def _group_tags_by_family_size(self) -> Dict[Tuple[str, float], List[int]]:
+        """Bucket ``self._tags_config`` by ``(family, size)`` -> ``[tag_id, ...]``.
+
+        Required because ``pupil_apriltags.Detector`` only supports a
+        single ``tag_size`` per ``detect()`` call. Tags in the same family
+        at different sizes must therefore be handled by separate
+        detectors, even though they share the same family decoder.
+        """
+        groups: Dict[Tuple[str, float], List[int]] = {}
+        for tag in self._tags_config:
+            key = (tag["family"], float(tag["size"]))
+            groups.setdefault(key, []).append(int(tag["id"]))
+        return groups
 
     # ---------------------------------------------------------------- Intrinsics
     def _yaml_intrinsics(self) -> Optional[Tuple[float, float, float, float, int, int, list, bool]]:
@@ -308,6 +347,7 @@ class AprilTagDetectorNode(Node):
         height: int,
         is_fisheye: bool,
     ) -> None:
+        """Create one ``AprilTagDetector`` per ``(family, tag_size)`` group."""
         self._rectifier = ImageRectifier(
             logger=self.get_logger(),
             camera_matrix=K,
@@ -322,24 +362,21 @@ class AprilTagDetectorNode(Node):
 
         self._image_size = (new_size["img_width"], new_size["img_height"])
 
-        for tag in self._tags_config:
-            key = (tag["family"], tag["id"])
+        groups = self._group_tags_by_family_size()
+        for (family, size), ids in groups.items():
             child_logger = self.get_logger().get_child(
-                f"det_{tag['family']}_{tag['id']}"
+                f"det_{family}_{int(round(size * 1000))}mm"
             )
-            self._detectors[key] = AprilTagDetector(
-                family=tag["family"],
-                tag_size=tag["size"],
+            self._detectors[(family, size)] = AprilTagDetector(
+                family=family,
+                tag_size=size,
+                tag_ids=ids,
                 camera_intrinsics=new_K,
                 camera_distortion=new_D.tolist(),
                 image_size=new_size,
                 logger=child_logger,
                 detector_params=dict(self._detector_params_template),
             )
-            try:
-                child_logger.set_level(rclpy.logging.LoggingSeverity.ERROR)
-            except Exception:
-                pass
 
     # ------------------------------------------------------------------- Tick
     def _tick(self) -> None:
@@ -363,27 +400,23 @@ class AprilTagDetectorNode(Node):
         )
         detections_msg.header.frame_id = self._camera_frame_id()
 
+        # Collected detections: (family, tag_id, T_cam_to_tag, was_bad_rotation).
         detected_tags: List[Tuple[str, int, np.ndarray, bool]] = []
-        for (family, tag_id), detector in self._detectors.items():
+        # Track which groups produced at least one visible tag, for logging.
+        for (family, _size), detector in self._detectors.items():
             try:
-                raw = detector.detector.detect(
-                    gray,
-                    estimate_tag_pose=True,
-                    camera_params=detector.camera_params,
-                    tag_size=detector.tag_size,
-                )
+                detections = detector.detect(gray)
             except Exception as e:
                 self.get_logger().warn(
-                    f"Detector ({family}, {tag_id}) failed: {e}; skipping this tick."
+                    f"Detector (family={family}, ids={sorted(detector.tag_ids)}) "
+                    f"failed: {e}; skipping this tick."
                 )
                 continue
-            for d in raw:
-                if int(d.tag_id) != int(tag_id):
-                    continue
+
+            for det in detections:
+                tag_id = det["tag_id"]
+                T = det["T"]
                 try:
-                    T = np.eye(4)
-                    T[:3, :3] = d.pose_R
-                    T[:3, 3] = d.pose_t.flatten()
                     was_bad = _is_bad_rotation(T[:3, :3])
                     T[:3, :3] = _sanitize_rotation(T[:3, :3])
                     if not np.all(np.isfinite(T[:3, :3])) or \
@@ -400,12 +433,21 @@ class AprilTagDetectorNode(Node):
                             f"(total bad-rotation drops: {self._bad_pose_count}): {e}"
                         )
 
+            # Draw bounding boxes / axes / labels on the rectified image.
             try:
-                detector.detect_and_draw(work)
+                detector.annotate(work, detections)
             except Exception as e:
                 self.get_logger().warn(
-                    f"Detector ({family}, {tag_id}) draw failed: {e}"
+                    f"Detector (family={family}) draw failed: {e}"
                 )
+
+        h, w = work.shape[:2]
+        cx, cy = w // 2, h // 2
+        cross_color = (0, 0, 255)
+        cross_thickness = 2
+        cross_arm = max(1, min(h, w) // 15)
+        cv2.line(work, (cx - cross_arm, cy), (cx + cross_arm, cy), cross_color, cross_thickness, cv2.LINE_AA)
+        cv2.line(work, (cx, cy - cross_arm), (cx, cy + cross_arm), cross_color, cross_thickness, cv2.LINE_AA)
 
         try:
             img_msg = self._bridge.cv2_to_imgmsg(work, encoding="bgr8")
@@ -431,9 +473,8 @@ class AprilTagDetectorNode(Node):
         self.detections_pub.publish(detections_msg)
 
         now = self.get_clock().now().to_msg()
-        prefix = str(self.get_parameter("tag_frame_prefix").value)
         for family, tag_id, T_cam_to_tag, _was_bad in detected_tags:
-            child = f"{prefix}{tag_id}"
+            child = _tf_frame_name(family, tag_id)
             self._tf.sendTransform(
                 _matrix_to_transform_stamped(T_cam_to_tag, cam_frame, child, now)
             )

@@ -17,6 +17,7 @@ install(DIRECTORY
   mesh
   urdf 
   config
+  rviz
   DESTINATION share/${PROJECT_NAME}
 )
 

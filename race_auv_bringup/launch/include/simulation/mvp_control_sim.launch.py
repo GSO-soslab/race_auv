@@ -20,7 +20,7 @@ def generate_launch_description():
         get_package_share_directory(robot_config)
     )
     mvp_control_config_file = os.path.join(robot_config_path, 'mvp_control_config', 'config_sim.yaml') 
-    mvp_control_param_file = os.path.join(robot_param_path, 'mvp_control.yaml') 
+    mvp_control_param_file = os.path.join(robot_param_path, 'mvp_control_sim.yaml') 
 
     return LaunchDescription([
 

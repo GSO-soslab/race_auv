@@ -18,7 +18,7 @@ def generate_launch_description():
         get_package_share_directory(robot_bringup),
         'config'
         )
-    mvp_mission_param_file = os.path.join(mvp_mission_path, 'mvp_mission.yaml') 
+    mvp_mission_param_file = os.path.join(mvp_mission_path, 'mvp_mission_sim.yaml') 
     ###################################
     ####### behaviors param############
     ###################################

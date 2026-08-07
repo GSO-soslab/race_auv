@@ -3,17 +3,16 @@
 <robot name="race_auv">
    <link name="nose_tip_link">
         <visual>
-            <origin xyz="00.0 0.0 0.0" rpy="0.0 0.0 0.0"/>
+            <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0"/>
             <geometry>
                 <mesh filename="package://race_auv_description/mesh/RACE_body.stl" scale="0.001 0.001 0.001"/>
             </geometry>
         </visual>
     </link>
 
-    
     <link name="base_link"/>
     <joint name="base_link" type="fixed">
-        <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0"/>
+        <origin xyz="0.6 0.0 0.0" rpy="0.0 0.0 0.0"/>
         <parent link="base_link"/>
         <child link="nose_tip_link"/>
     </joint>
@@ -25,115 +24,114 @@
         <child link="cg_link"/>
     </joint>
 
-
     <link name="imu"/>
     <joint name="imu_joint" type="fixed">
-        <origin xyz="-0.5 0.0 -0.08" rpy="0.0 0.0 0.0"/>
-        <parent link="base_link"/>
+        <origin xyz="-0.621 0.0 -0.120" rpy="0.0 0.0 0.0"/>
+        <parent link="nose_tip_link"/>
         <child link="imu"/>
     </joint>
 
     <link name="imu_sf"/>
     <joint name="imu__sf_joint" type="fixed">
-        <origin xyz="-0.5 0.0 -0.08" rpy="0.0 0.0 0.0"/>
-        <parent link="base_link"/>
+        <origin xyz="-0.621 0.0 -0.120" rpy="0.0 0.0 0.0"/>
+        <parent link="nose_tip_link"/>
         <child link="imu_sf"/>
     </joint>
 
     <link name="dvl"/>
     <joint name="dvl_joint" type="fixed">
-        <origin xyz="-0.5 0.0 0.0" rpy="3.1415926 0.0 0.0"/>
-        <parent link="base_link"/>
+        <origin xyz="-0.738 0.0 -0.138" rpy="3.1415926 0.0 0.0"/>
+        <parent link="nose_tip_link"/>
         <child link="dvl"/>
     </joint>
 
      <link name="dvl_sf"/>
     <joint name="dvl_sf_joint" type="fixed">
-        <origin xyz="-0.5 0.0 0.0" rpy="3.1415926 0.0 0.0"/>
-        <parent link="base_link"/>
+        <!-- <origin xyz="-0.738 0.0 -0.138" rpy="3.1415926 0.0 0.0"/> -->
+        <origin xyz="-0.738 0.0 -0.138" rpy="0.0 0.0 0.0"/>
+        <parent link="nose_tip_link"/>
         <child link="dvl_sf"/>
     </joint>
 
-    <link name="gps"/>
+    <!-- <link name="gps"/>
     <joint name="gps_joint" type="fixed">
         <origin xyz="-0.5 0.0 -0.18" rpy="0.0 0.0 0.0"/>
         <parent link="base_link"/>
         <child link="gps"/>
-    </joint>
+    </joint> -->
 
     <link name="pressure"/>
     <joint name="pressure_joint" type="fixed">
-        <origin xyz="-0.2 0.0 0.0" rpy="0.0 0.0 0.0"/>
-        <parent link="base_link"/>
+        <origin xyz="-0.524 0 -0.021" rpy="0.0 0.0 0.0"/>
+        <parent link="nose_tip_link"/>
         <child link="pressure"/>
     </joint>
 
-    <link name="cam1"/>
-    <joint name="cam1_joint" type="fixed">
-        <origin xyz="0.0 0.0 -0.05" rpy="1.571 0.0 1.571"/>
-        <!-- <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0"/> -->
-        <parent link="base_link"/>
-        <child link="cam1"/>
+    <link name="acomm_modem"/>
+    <joint name="acomm_modem_joint" type="fixed">
+        <origin xyz="-0.268 0.1 0.095" rpy="0.0 0.0 0.0"/>
+        <parent link="nose_tip_link"/>
+        <child link="acomm_modem"/>
     </joint>
 
-    <link name="cam2"/>
-    <joint name="cam2_joint" type="fixed">
-        <origin xyz="-0.3 0.0 0.01" rpy="0.0 0.0 1.571"/>
-        <parent link="base_link"/>
-        <child link="cam2"/>
+    <link name="cam_front"/>
+    <joint name="cam_front_joint" type="fixed">
+        <!-- <origin xyz="0.0 0.0 -0.05" rpy="1.571 0.0 1.571"/> -->
+        <origin xyz="-0.004 0.0 0.035" rpy="-1.571 0.0 -1.571"/>
+        <parent link="nose_tip_link"/>
+        <child link="cam_front"/>
     </joint>
 
-<!-- 
-    <link name="ping360_link"/>
-    <joint name="ping360_joint" type="fixed">
-        <origin xyz="0.63 0.0 -0.085" rpy="0.0 0.0 3.1415926"/>
-        <parent link="base_link"/>
-        <child link="ping360_link"/>
+    <link name="cam_down"/>
+    <joint name="cam_down_joint" type="fixed">
+        <!-- <origin xyz="-0.3 0.0 0.01" rpy="0.0 0.0 1.571"/> -->
+        <origin xyz="-0.305 0.0 -0.153" rpy="0.0 3.1415 1.571"/>
+        <parent link="nose_tip_link"/>
+        <child link="cam_down"/>
     </joint>
--->
 
     <!-- thrusters -->
     <link name="sway_stern_thruster_link"/>
     <joint name="sway_stern_thruster_joint" type="fixed">
-        <origin xyz="-0.66635 0.0 -0.07535" rpy="0.0 0.0 1.571"/>
-        <parent link="base_link"/>
+        <origin xyz="-1.043 -0.005 -0.011" rpy="0.0 0.0 1.571"/>
+        <parent link="nose_tip_link"/>
         <child link="sway_stern_thruster_link"/>
     </joint>
 
     <link name="heave_bow_thruster_link"/>
     <joint name="heave_bow_thruster_joint" type="fixed">
-        <origin xyz="-0.07535 0.0 -0.07535" rpy="0.0 -1.571 0.0"/>
-        <parent link="base_link"/>
+        <origin xyz="-0.186 0.0 -0.016" rpy="0.0 -1.571 0.0"/>
+        <parent link="nose_tip_link"/>
         <child link="heave_bow_thruster_link"/>
     </joint>
 
     <link name="heave_stern_port_thruster_link"/>
     <joint name="heave_stern_port_thruster_joint" type="fixed">
-        <origin xyz="-0.56 -0.1034 -0.07535" rpy="0.0 -1.571 0.0"/>
-        <parent link="base_link"/>
+        <origin xyz="-0.928 0.103 -0.016" rpy="0.0 -1.571 0.0"/>
+        <parent link="nose_tip_link"/>
         <child link="heave_stern_port_thruster_link"/>
     </joint>
 
     <link name="heave_stern_stbd_thruster_link"/>
     <joint name="heave_stern_stbd_thruster_joint" type="fixed">
-        <origin xyz="-0.56 0.1034 -0.07535" rpy="0.0 -1.571 0.0"/>
-        <parent link="base_link"/>
+        <origin xyz="-0.928 -0.103 -0.016" rpy="0.0 -1.571 0.0"/>
+        <parent link="nose_tip_link"/>
         <child link="heave_stern_stbd_thruster_link"/>
     </joint>
 
     <link name="surge_port_thruster_link"/>
     <joint name="surge_port_thruster_joint" type="fixed">
         <!-- <origin xyz="-0.86 -0.125 -0.05485" rpy="0.0 0.8 -0.52"/> -->
-        <origin xyz="-0.875 -0.11 -0.05485" rpy="0.0 0.0 -0.52"/>
-        <parent link="base_link"/>
+        <origin xyz="-1.273 0.09 -0.03" rpy="0.0 0.0 0.52"/>
+        <parent link="nose_tip_link"/>
         <child link="surge_port_thruster_link"/>
     </joint>
     
     <link name="surge_stbd_thruster_link"/>
     <joint name="surge_stbd_thruster_joint" type="fixed">
         <!-- <origin xyz="-0.86 0.125 -0.05485" rpy="0.0 0.8 0.52"/> -->
-        <origin xyz="-0.875 0.11 -0.05485" rpy="0.0 0.0 0.52"/>
-        <parent link="base_link"/>
+        <origin xyz="-1.273 -0.09 -0.03" rpy="0.0 0.0 -0.52"/>
+        <parent link="nose_tip_link"/>
         <child link="surge_stbd_thruster_link"/>
     </joint>
 

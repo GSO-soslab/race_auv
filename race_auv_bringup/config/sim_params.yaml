@@ -30,3 +30,14 @@
       modem_send_topic: /race_auv/stonefish/acomms/data_to_send
       modem_received_bytearray_topic: /race_auv/acomms/received_data_bytes
       modem_send_bytearray_topic: /race_auv/acomms/data_to_send_bytes
+
+/stonefish_simulator:
+    ros__parameters:
+      density: "1023.0"
+      jerlov: "0.2"
+      temperature: "15.0"
+      wave_height: "0.0"
+      particles_enabled: "false"
+      uniform_current: "0.0 0.0 0.0"
+      sun_azimuth: "0.0"
+      sun_elevation: "45.0"
