@@ -24,11 +24,11 @@
         <child link="cg_link"/>
     </joint>
 
-    <link name="auv_dock_point_link"/>
+    <link name="auv_dock_point"/>
     <joint name="auv_dock_point_joint" type="fixed">
         <origin xyz="-0.305 0.0 -0.13" rpy="0.0 0.0 0.0"/>
         <parent link="nose_tip_link"/>
-        <child link="auv_dock_point_link"/>
+        <child link="auv_dock_point"/>
     </joint>
 
 
