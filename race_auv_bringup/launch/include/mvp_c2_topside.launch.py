@@ -105,21 +105,21 @@ def generate_launch_description():
 #                             #     ],
 #                             )
 
-    # ##joy stick
-    # joy =  Node(
-    #             package="joy",
-    #             executable="joy_node",
-    #             name="joy_node",
-    #             namespace=robot_name,
-    #             output="screen",
-    #             parameters=[
-    #                 {'coalesce_interval': 10},
-    #                 {'autorepeat_rate': 2.0}
-    #             ],
-    #             remappings=[
-    #                 ('joy', 'mvp_c2_commander/remote/id_2/joy'),
-    #             ]   
-    #         )
+    ##joy stick
+    joy =  Node(
+                package="joy",
+                executable="joy_node",
+                name="joy_node",
+                namespace=robot_name,
+                output="screen",
+                parameters=[
+                    {'coalesce_interval': 10},
+                    {'autorepeat_rate': 2.0}
+                ],
+                remappings=[
+                    ('joy', 'mvp_c2_commander/remote/id_2/joy'),
+                ]   
+            )
     
     return LaunchDescription([
         # serial_node,
@@ -128,5 +128,5 @@ def generate_launch_description():
         # usbl_traffic_manager,
         commander_node,
         # mvp_geopoint,
-        # joy     
+        joy
     ])

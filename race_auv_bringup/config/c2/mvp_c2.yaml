@@ -1,8 +1,8 @@
 #####vehicle side stuff
-/race_auv/reporter_c2_serial_comm:
-  ros__parameters:
-    port: /dev/ttyAMA0
-    baudrate: 57600
+# /race_auv/reporter_c2_serial_comm:
+#   ros__parameters:
+#     port: /dev/ttyAMA0
+#     baudrate: 57600
 
 /race_auv/reporter_c2_udp_comm:
   ros__parameters:
@@ -24,7 +24,7 @@
     gpio_devices: ['payload_24v', 'regular_payload', 'backseat']  # this needs to match the gpio manager yaml
 
 ## topside stuff
-/race_station/mvp_c2_commander:
+/race_topside/mvp_c2_commander:
   ros__parameters:
     dccl_tx_interval: 1.0
     dccl_rx_interval: 0.5
@@ -33,15 +33,15 @@
     launch_files: ['bringup_utilities', 'bringup_sensors', bringup_localization, 'bringup_mvp', 'bringup_thrusters', 'rosbag_record', 'bringup_acomm' ]
     gpio_devices: ['payload_24v', 'regular_payload', 'backseat']  # this needs to match the gpio manager yaml
 
-/race_station/commander_c2_udp_comm:
+/race_topside/commander_c2_udp_comm:
   ros__parameters:
     type: server
-    server_ip: 192.168.1.87
+    server_ip: 192.168.2.10
     server_port: 5000
-    client_ip: 192.168.1.87
+    client_ip: 192.168.2.60
     client_port: 6000
 
-/race_station/commander_c2_serial_comm:
-  ros__parameters:
-    port: /dev/ttyUSB0
-    baudrate: 57600
+# /race_topside/commander_c2_serial_comm:
+#   ros__parameters:
+#     port: /dev/ttyUSB0
+#     baudrate: 57600
