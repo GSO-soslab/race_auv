@@ -9,10 +9,10 @@ bhv_teleop:
   ## LB has to be pressed 
   ##LT resets desired states to zero for all.
   tele_s_surge: 1.0
-  tele_s_sway: 1.0
+  tele_s_sway: -1.0
   tele_d_yaw: 5.0 
   tele_d_pitch: 5.0
-  tele_d_depth: 0.2
+  tele_d_depth: 0.1
   no_joy_timeout: 100.0
 
 # bhv_direct_control:

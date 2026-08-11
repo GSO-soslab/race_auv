@@ -15,6 +15,11 @@ apriltag:
     urdf_filename:  "urdf/base.urdf"
     base_link_name: ""              # empty -> URDF root link
     tag_link_prefix: "apriltag"
+    # URDF link whose pose (in the object's base frame) is composed onto
+    # the solved T_ref_to_base. Empty -> publish the base frame itself.
+    # Fuser publishes the TF <reference_frame> -> <output_frame>, where
+    # <output_frame> is the dock frame the rest of the stack uses.
+    dock_link_name: "dock_point"
 
   # Shared detector tuning.
   detector_defaults:
@@ -116,13 +121,15 @@ apriltag:
         distortion: [0.0, 0.0, 0.0, 0.0, 0.0]
         fisheye: false
 
-  # Multi-camera fuser. Owns the single fused object_base TF and a matching
-  # PoseStamped topic.
+  # Multi-camera fuser. Owns the single fused dock-point TF and a matching
+  # PoseStamped topic. The published frame is the URDF link named by
+  # object.dock_link_name (here "dock_point"); T_ref_to_dock is computed
+  # by composing the solved T_ref_to_base with the URDF's T_base_to_dock.
   fuser:
     enabled: true
     reference_frame: "race_auv/base_link"
-    output_frame:    "object_base"
-    output_pose_topic: "object_base/pose"   # "" to disable
+    output_frame:    "dock_point"
+    output_pose_topic: "dock_point/pose"   # "" to disable
     publish_rate:    5.0
     min_pairs:       1
     detection_max_age: 0.5

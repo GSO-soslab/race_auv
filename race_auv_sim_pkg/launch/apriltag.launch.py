@@ -116,7 +116,7 @@ def _build_nodes(context, *args, **kwargs):
                 parameters=[{
                     "config_yaml": config_path,
                     "reference_frame": fuser_cfg.get("reference_frame", "base_link"),
-                    "output_frame": fuser_cfg.get("output_frame", "object_base"),
+                    "output_frame": fuser_cfg.get("output_frame", "dock_point"),
                     "publish_rate": float(fuser_cfg.get("publish_rate", 5.0)),
                     "min_pairs": int(fuser_cfg.get("min_pairs", 3)),
                     "detection_max_age": float(
@@ -125,7 +125,7 @@ def _build_nodes(context, *args, **kwargs):
                     "tf_timeout": float(fuser_cfg.get("tf_timeout", 0.1)),
                     "detections_topics": detection_topics,
                     "output_pose_topic": fuser_cfg.get(
-                        "output_pose_topic", "object_base/pose"
+                        "output_pose_topic", "dock_point/pose"
                     ),
                 }],
             )

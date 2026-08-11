@@ -6,7 +6,15 @@ the detectors used (so it knows ``T_base_to_tag`` for every tag id), and on
 each tick runs a single joint Umeyama / SVD SE(3) solve over **all** tags
 seen by **all** cameras. The result is published as a single TF:
 
-    <reference_frame>  --(T_ref_to_object_base)-->  <output_frame>
+    <reference_frame>  --(T_ref_to_output)-->  <output_frame>
+
+The frame that ends up in the published TF is the URDF link named
+``object.dock_link_name`` (default: the object's base link itself). With
+the default config the dock frame is the station's ``base_link``; set
+``object.dock_link_name: "dock_point"`` to publish the dock-point frame
+instead. The dock frame and ``object_base/pose`` topics are the same
+shape and are computed by composing the solved ``T_ref_to_base`` with the
+URDF's ``T_base_to_dock`` (a fixed post-multiply).
 
 This replaces the per-camera ``object_base_camN`` frame, which only sees the
 subset of tags in that camera's field of view and therefore drifts (or
@@ -45,7 +53,7 @@ from .apriltag_geom import (
     sanitize_rotation,
     solve_cam_to_base,
 )
-from .urdf_tag_parser import TagTransform, extract_tag_transforms
+from .urdf_tag_parser import TagTransform, extract_tag_transforms, link_transform_from_base
 
 
 def _pose_to_matrix(pose) -> np.ndarray:
@@ -83,7 +91,7 @@ def _parse_tag_family_id(det_id: str) -> Optional[Tuple[str, int]]:
 
 
 class AprilTagFuserNode(Node):
-    """Fuse per-camera tag detections into one ``object_base`` TF."""
+    """Fuse per-camera tag detections into one docked-object TF."""
 
     def __init__(self) -> None:
         super().__init__("apriltag_fuser")
@@ -95,7 +103,19 @@ class AprilTagFuserNode(Node):
         self.declare_parameter("urdf_filename", "")
         self.declare_parameter(
             "reference_frame", "base_link",
-            ParameterDescriptor(description="TF frame in which object_base will be published."),
+            ParameterDescriptor(description="TF frame in which the fused dock pose is published."),
+        )
+        self.declare_parameter(
+            "dock_link_name", "",
+            ParameterDescriptor(
+                description=(
+                    "URDF link whose pose (in the object's base frame) is "
+                    "post-multiplied onto the solved T_ref_to_base. Default "
+                    "empty -> identity (publishes the base frame itself). "
+                    "Configurable via 'object.dock_link_name' in the YAML; "
+                    "this ROS param overrides it."
+                )
+            ),
         )
         self.declare_parameter("output_frame", "object_base")
         self.declare_parameter("publish_rate", 5.0)
@@ -134,8 +154,8 @@ class AprilTagFuserNode(Node):
             ParameterDescriptor(
                 description=(
                     "Topic on which to publish a geometry_msgs/PoseStamped "
-                    "mirror of the fused object_base pose. Empty string "
-                    "disables the topic."
+                    "mirror of the fused dock pose. Empty string disables "
+                    "the topic."
                 )
             ),
         )
@@ -143,6 +163,9 @@ class AprilTagFuserNode(Node):
         # --- Load URDF tag transforms ---
         # Keyed by (family, tag_id) since tag ids are per-family.
         self._tag_transforms: Dict[Tuple[str, int], TagTransform] = {}
+        self._urdf_path: str = ""
+        self._obj_cfg: dict = {}
+        self._T_base_to_dock: Optional[np.ndarray] = None
         self._load_tag_transforms()
 
         # --- TF ---
@@ -262,6 +285,32 @@ class AprilTagFuserNode(Node):
             f"URDF resolved: {urdf_path} ({len(tag_transforms)} tag links)"
         )
         self._tag_transforms = tag_transforms
+        self._urdf_path = urdf_path
+        self._obj_cfg = obj_cfg
+
+        # Resolve the dock link: ROS param overrides YAML 'object.dock_link_name';
+        # empty -> identity (publish the base frame itself).
+        dock_override = self.get_parameter("dock_link_name").value
+        dock_link = str(dock_override) if dock_override else ""
+        if not dock_link:
+            dock_link = str(obj_cfg.get("dock_link_name", "") or "")
+        dock_link = dock_link.strip()
+        if not dock_link:
+            self._T_base_to_dock = np.eye(4)
+            self.get_logger().info(
+                "No dock_link_name set; fuser will publish the base frame "
+                "itself (T_base_to_dock = I)."
+            )
+        else:
+            base_for_walk = base_link  # same base as tag extraction
+            self._T_base_to_dock = link_transform_from_base(
+                urdf_path, dock_link, base_link_name=base_for_walk,
+            )
+            t = self._T_base_to_dock[:3, 3]
+            self.get_logger().info(
+                f"Dock link '{dock_link}' resolved; T_base_to_dock translation="
+                f"[{t[0]:+.3f}, {t[1]:+.3f}, {t[2]:+.3f}]"
+            )
 
     def _make_detection_cb(self, topic: str):
         def cb(msg: Detection3DArray) -> None:
@@ -407,17 +456,25 @@ class AprilTagFuserNode(Node):
         if T_ref_to_base is None:
             return
 
+        # T_base_to_dock is a fixed rigid offset from the URDF; composing it
+        # onto the solved T_ref_to_base gives T_ref_to_dock (or to the base
+        # frame itself when no dock_link_name is configured).
+        T_base_to_dock = self._T_base_to_dock
+        if T_base_to_dock is None:
+            T_base_to_dock = np.eye(4)
+        T_ref_to_out = T_ref_to_base @ T_base_to_dock
+
         now_msg = self.get_clock().now().to_msg()
         self._tf_broadcaster.sendTransform(
             matrix_to_transform_stamped(
-                T_ref_to_base, ref_frame, out_frame, now_msg,
+                T_ref_to_out, ref_frame, out_frame, now_msg,
             )
         )
         if self._pose_pub is not None:
             pose_msg = PoseStamped()
             pose_msg.header.stamp = now_msg
             pose_msg.header.frame_id = ref_frame
-            pose_msg.pose = matrix_to_pose_msg(T_ref_to_base)
+            pose_msg.pose = matrix_to_pose_msg(T_ref_to_out)
             self._pose_pub.publish(pose_msg)
 
 

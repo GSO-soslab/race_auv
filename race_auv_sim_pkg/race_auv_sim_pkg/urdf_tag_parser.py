@@ -193,8 +193,16 @@ def extract_tag_transforms(
         if whitelist is not None and family not in whitelist:
             continue
         T = _origin_to_homogeneous(joint.find("origin"))
-        # Last writer wins on duplicate keys (shouldn't happen in a sane URDF).
-        result[(family, tag_id)] = TagTransform(
+        key = (family, tag_id)
+        if key in result:
+            first = result[key].child_link
+            raise ValueError(
+                f"Duplicate tag id in {urdf_path}: both '{first}' and "
+                f"'{child}' parse to (family={family}, id={tag_id}). "
+                f"Tag ids are per-family and must be unique; rename one of "
+                f"the joint/link pairs so the trailing <id> digits differ."
+            )
+        result[key] = TagTransform(
             tag_id=tag_id, family=family, child_link=child, T_base_to_tag=T
         )
 
@@ -203,3 +211,95 @@ def extract_tag_transforms(
             f"No '{prefix}<family>_<id>' fixed-jointed links found in {urdf_path}"
         )
     return result
+
+
+def link_transform_from_base(
+    urdf_path: str | Path,
+    link_name: str,
+    base_link_name: Optional[str] = None,
+) -> np.ndarray:
+    """Return ``T_base_to_link`` for any link in the URDF.
+
+    Walks the fixed-joint chain from ``link_name`` up to the base link,
+    composing transforms along the way. Used for non-tag links (e.g. the
+    dock point) whose pose is expressed in the tag object's base frame.
+
+    Parameters
+    ----------
+    urdf_path
+        Path to the URDF XML file.
+    link_name
+        Name of the link whose base-relative pose is wanted.
+    base_link_name
+        Name of the base link. If ``None``, the URDF root link is used.
+
+    Returns
+    -------
+    np.ndarray
+        4x4 homogeneous transform ``base -> link``.
+
+    Raises
+    ------
+    FileNotFoundError
+        If ``urdf_path`` does not exist.
+    ValueError
+        If ``link_name`` is not in the URDF, is not reachable from the
+        base via fixed joints, or is reached via a non-``fixed`` joint.
+    """
+    urdf_path = Path(urdf_path).expanduser().resolve()
+    if not urdf_path.is_file():
+        raise FileNotFoundError(f"URDF not found: {urdf_path}")
+
+    base = _resolve_base_link(urdf_path, base_link_name)
+    link_names = _load_link_names(urdf_path)
+    if link_name not in link_names:
+        raise ValueError(
+            f"Link '{link_name}' not in URDF {urdf_path}"
+        )
+    if link_name == base:
+        return np.eye(4)
+
+    # Build child -> (parent, T_parent_to_child) for every fixed joint.
+    root = ET.parse(str(urdf_path)).getroot()
+    parent_of: Dict[str, Tuple[str, np.ndarray]] = {}
+    joint_types: Dict[str, str] = {}
+    for joint in root.findall("joint"):
+        parent_el = joint.find("parent")
+        child_el = joint.find("child")
+        if parent_el is None or child_el is None:
+            continue
+        parent = parent_el.get("link", "")
+        child = child_el.get("link", "")
+        if not parent or not child:
+            continue
+        joint_types[child] = joint.get("type", "").lower()
+        if joint_types[child] != "fixed":
+            continue
+        parent_of[child] = (parent, _origin_to_homogeneous(joint.find("origin")))
+
+    # Walk up to base, composing parent_to_child transforms.
+    T = np.eye(4)
+    visited: Set[str] = set()
+    cur = link_name
+    while cur != base:
+        visited.add(cur)
+        if cur not in parent_of:
+            raise ValueError(
+                f"Link '{link_name}' has no fixed-joint chain to base "
+                f"'{base}' in {urdf_path} (stuck at '{cur}')"
+            )
+        parent, T_parent_to_child = parent_of[cur]
+        if cur in joint_types and joint_types[cur] != "fixed":
+            raise ValueError(
+                f"Link '{link_name}' is connected to '{parent}' via a "
+                f"non-fixed joint (type={joint_types[cur]!r}); only fixed "
+                f"chains are supported"
+            )
+        T = T_parent_to_child @ T
+        if parent in visited:
+            raise ValueError(
+                f"Cycle detected in URDF chain from '{link_name}' to "
+                f"'{base}' via '{parent}'"
+            )
+        cur = parent
+    return T
