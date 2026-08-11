@@ -9,7 +9,7 @@ from ament_index_python.packages import get_package_share_directory
 
 
 def generate_launch_description():
-    robot_name = 'race_station'
+    robot_name = 'race_topside'
     robot_bringup = 'race_auv' + '_bringup'
     topside_setting_file = os.path.join(get_package_share_directory(robot_bringup), 'config', 'c2', 'mvp_c2.yaml') 
     topside_traffic_manager_file = os.path.join(get_package_share_directory(robot_bringup), 'config', 'c2', 'mvp_c2_commander_traffic.yaml') 
