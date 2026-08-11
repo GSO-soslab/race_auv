@@ -24,6 +24,14 @@
         <child link="cg_link"/>
     </joint>
 
+    <link name="auv_dock_point_link"/>
+    <joint name="auv_dock_point_joint" type="fixed">
+        <origin xyz="-0.305 0.0 -0.13" rpy="0.0 0.0 0.0"/>
+        <parent link="nose_tip_link"/>
+        <child link="auv_dock_point_link"/>
+    </joint>
+
+
     <link name="imu"/>
     <joint name="imu_joint" type="fixed">
         <origin xyz="-0.621 0.0 -0.120" rpy="0.0 0.0 0.0"/>
@@ -45,7 +53,7 @@
         <child link="dvl"/>
     </joint>
 
-     <link name="dvl_sf"/>
+    <link name="dvl_sf"/>
     <joint name="dvl_sf_joint" type="fixed">
         <!-- <origin xyz="-0.738 0.0 -0.138" rpy="3.1415926 0.0 0.0"/> -->
         <origin xyz="-0.738 0.0 -0.138" rpy="0.0 0.0 0.0"/>
@@ -85,7 +93,7 @@
     <link name="cam_down"/>
     <joint name="cam_down_joint" type="fixed">
         <!-- <origin xyz="-0.3 0.0 0.01" rpy="0.0 0.0 1.571"/> -->
-        <origin xyz="-0.305 0.0 -0.153" rpy="0.0 3.1415 1.571"/>
+        <origin xyz="-0.305 0.0 -0.128" rpy="0.0 3.1415 1.571"/>
         <parent link="nose_tip_link"/>
         <child link="cam_down"/>
     </joint>
