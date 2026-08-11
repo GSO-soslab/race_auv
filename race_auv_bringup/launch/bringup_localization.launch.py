@@ -7,12 +7,12 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
 
-    robot_name = 'race_auv_bringup'
+    robot_name = 'race_auv'
 
     # Vehicle localization base_link <> odom
     localization = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
-            os.path.join(get_package_share_directory('race_auv_bringup_bringup'),
+            os.path.join(get_package_share_directory('race_auv_bringup'),
             'launch/include/localization.launch.py')]),
         launch_arguments={
             'robot_name': robot_name,
@@ -23,7 +23,7 @@ def generate_launch_description():
     # world <> odom tf
     initialization = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
-            os.path.join(get_package_share_directory('race_auv_bringup_bringup'),
+            os.path.join(get_package_share_directory('race_auv_bringup'),
             'launch/include/initialization.launch.py')]),
         launch_arguments={
             'robot_name': robot_name,
