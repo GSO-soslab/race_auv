@@ -19,7 +19,7 @@
     dynamic_buffer:
       max_total_size: 150 # how many dccl message entries will be stored
       overflow_remove_by_time: False
-      dccl_intake_message_list: ["Joy", "SetPowerPort", "SetController", "SetHelm", "SetWpt", "RosLaunch"]
+      dccl_intake_message_list: ["Joy", "PWM", "SetPowerPort", "SetController", "SetHelm", "SetWpt", "RosLaunch"]
 
     # --- Message Specific Rules ---
     # Higher means priority
@@ -43,6 +43,10 @@
       SetWpt:
         priority: 6
         ttl_seconds: 100
+
+      PWM:
+        priority: 4
+        ttl_seconds: 30
 
       Joy:
         priority: 5

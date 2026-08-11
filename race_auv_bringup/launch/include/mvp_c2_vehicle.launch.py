@@ -63,6 +63,7 @@ def generate_launch_description():
                             ('local/power_monitor', 'power_monitor_node/power_monitor'),
                             ('local/computer_info', 'pi/computer_info'),
                             ('mvp_c2/reporter/dccl_msg_rx', 'mvp_c2/traffic_control/dccl_msg_controlled_rx'),
+                            ('local/pwm', 'led_front'),
                         ]
                     )
 

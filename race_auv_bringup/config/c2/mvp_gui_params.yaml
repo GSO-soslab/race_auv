@@ -65,6 +65,7 @@ ros_interface_node:
     controller_state_set: "controller/set"
     pub_waypoints_service: "mvp_helm/set_waypoints"
     set_power_service: "gpio_manager/set_power/"
+    pwm_cmd_topic: "pwm_cmd"
     
     # Name of the node to fetch dynamic launch/power configurations from
     c2_commander_node: "/race_topside/mvp_c2_commander"
