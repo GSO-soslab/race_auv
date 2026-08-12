@@ -1,0 +1,22 @@
+# General hardware control settings that can be applied to any V4L2 camera.
+# These are the most likely parameters to be tuned for lighting conditions.
+/**:
+  ros__parameters:
+    camera:
+      # --- Exposure Controls (Manual) ---
+      auto_exposure: True                # MUST be False for manual control.
+      exposure_time: 156                  # TUNE THIS VALUE: Manually set for correct brightness.
+      gain: 0                             # Minimum digital gain to reduce noise.
+      # --- White Balance Controls (Manual) ---
+      white_balance_automatic: True      # MUST be False for manual control.
+      white_balance_temperature: 4600     # TUNE THIS VALUE: Manually set for correct color.
+      # --- Enhancement & Compensation Filters (Disabled/Minimal) ---
+      sharpness: 0                        # Minimum sharpness (disables edge enhancement).
+      backlight_compensation: 0           # Minimum (disabled).
+      power_line_frequency: 0             # Disabled. May cause flicker under AC lights.
+      # --- Color & Tone Controls (Neutral/Default) ---
+      brightness: 0                       # Neutral brightness.
+      contrast: 32                        # Lower contrast for a "flatter" image.
+      saturation: 64                      # Neutral color saturation.
+      hue: 0                              # Neutral hue.
+      gamma: 100                          # Default gamma curve.
