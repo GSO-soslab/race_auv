@@ -1,0 +1,14 @@
+# Application profile for a standard camera stream.
+# This file is combined with a camera-specific file (e.g., stellar_cam.yaml)
+# and a hardware file (hardware_controls.yaml) in a launch file.
+# Using '/**' to allow composition with other parameter files.
+/**:
+  ros__parameters:         
+    # Settings for the low-bandwidth compressed stream (0 target_fps will disable this topic)
+    compression:
+      downscale: 4    # (reduction factor, only works with 2/4/8)
+      target_fps: 0 
+      jpeg_quality: 80
+    # ROS-specific settings
+    ros:
+      frame_id: "dwe_camera_frame"
