@@ -21,7 +21,7 @@ control_modes:
     pitch:    {p: 5.0,   i: 1.0,  d: 0.0, v: 5.0,  pid_max: 20, pid_min: -20}
     yaw:      {p: 4.0,   i: 0.2,   d: 0.0, v: 5.0,  pid_max: 15, pid_min: -15}
     z:        {p: 15.0,   i: 1.0 ,  d: 0.0, v: 5.0,  pid_max: 30, pid_min: -30}
-    roll:     {p: 2.0,   i: 0.1,  d: 0.0, v: 5.0,  pid_max: 5, pid_min: -5}
+    # roll:     {p: 2.0,   i: 0.1,  d: 0.0, v: 5.0,  pid_max: 5, pid_min: -5}
     u:    {p: 30.0,   i: 1.5,   d: 0.0, v: 5.0,   pid_max: 50, pid_min: -50}
 
 thruster_ids:
