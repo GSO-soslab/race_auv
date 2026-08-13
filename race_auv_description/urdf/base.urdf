@@ -34,7 +34,7 @@
 
     <link name="imu"/>
     <joint name="imu_joint" type="fixed">
-        <origin xyz="-0.621 0.0 -0.120" rpy="0.0 0.0 0.0"/>
+        <origin xyz="-0.621 0.0 -0.120" rpy="3.1415926 0.0 3.1415926"/>
         <parent link="nose_tip_link"/>
         <child link="imu"/>
     </joint>
@@ -108,21 +108,21 @@
 
     <link name="heave_bow_thruster_link"/>
     <joint name="heave_bow_thruster_joint" type="fixed">
-        <origin xyz="-0.186 0.0 -0.016" rpy="0.0 -1.571 0.0"/>
+        <origin xyz="-0.186 0.0 -0.016" rpy="0.0 1.571 0.0"/>
         <parent link="nose_tip_link"/>
         <child link="heave_bow_thruster_link"/>
     </joint>
 
     <link name="heave_stern_port_thruster_link"/>
     <joint name="heave_stern_port_thruster_joint" type="fixed">
-        <origin xyz="-0.928 0.103 -0.016" rpy="0.0 -1.571 0.0"/>
+        <origin xyz="-0.928 0.103 -0.016" rpy="0.0 1.571 0.0"/>
         <parent link="nose_tip_link"/>
         <child link="heave_stern_port_thruster_link"/>
     </joint>
 
     <link name="heave_stern_stbd_thruster_link"/>
     <joint name="heave_stern_stbd_thruster_joint" type="fixed">
-        <origin xyz="-0.928 -0.103 -0.016" rpy="0.0 -1.571 0.0"/>
+        <origin xyz="-0.928 -0.103 -0.016" rpy="0.0 1.571 0.0"/>
         <parent link="nose_tip_link"/>
         <child link="heave_stern_stbd_thruster_link"/>
     </joint>

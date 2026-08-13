@@ -6,7 +6,7 @@
     pwm_ms_bias: 0.09
     no_pwm_timeout: 100.0
   
-    mcu_installed: false
+    mcu_installed: true
     
     thruster_ch_list: [0, 1, 2, 3, 4, 5]
     thruster_topic_list: [control/thruster/surge_port, control/thruster/heave_bow, control/thruster/heave_stern_stbd, control/thruster/sway_stern, control/thruster/surge_stbd, control/thruster/heave_stern_port]
