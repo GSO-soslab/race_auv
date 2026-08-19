@@ -67,16 +67,23 @@ from launch_ros.actions import Node
 # 2 s is enough on Jetson Orin to clear the UVC probe race for /dev/video2.
 _INTER_NODE_DELAY_S = 2.0
 
-# Default path to prepend to PYTHONPATH so the spawned subprocesses
-# (camera_node, apriltag_detector_node -- both Python) load the
-# CUDA-enabled OpenCV build instead of the apt-installed one.
-#
-# Default order matches a typical `cmake -DCMAKE_INSTALL_PREFIX=/usr/local`
-# install on Debian / Ubuntu / NVIDIA L4T (Jetson). Override at launch
-# time with `opencv_python_path:=<dir>` if your build went elsewhere
-# (e.g. /home/<user>/opencv-install/lib/python3.12/site-packages).
-import sys as _sys
-_DEFAULT_OPENCV_PYTHON_PATH = f"/usr/local/lib/python{_sys.version_info.major}.{_sys.version_info.minor}/site-packages"
+# Where OpenCV might have been installed. Used by the auto-detect
+# fallback in ``_resolve_opencv_path``. ``make install`` of a stock
+# OpenCV build lands here on:
+#   * Debian / Ubuntu / NVIDIA L4T (Jetson) -- ``dist-packages``
+#   * Arch / Fedora / most non-Debian distros -- ``site-packages``
+# We probe both. ``<prefix>`` is ``/usr/local`` by default (OpenCV's
+# CMake default) but we also try ``/usr`` in case the build was
+# configured with ``CMAKE_INSTALL_PREFIX=/usr``.
+def _opencv_probe_paths() -> list[str]:
+    py_major_minor = f"python{sys.version_info.major}.{sys.version_info.minor}"
+    py_major = f"python{sys.version_info.major}"
+    candidates = []
+    for prefix in ("/usr/local", "/usr"):
+        for libdir in (f"lib/{py_major_minor}", f"lib/{py_major}"):
+            for sub in ("site-packages", "dist-packages"):
+                candidates.append(f"{prefix}/{libdir}/{sub}")
+    return candidates
 
 
 class _CamPair(NamedTuple):
@@ -229,31 +236,78 @@ def _build_pairs(config_path: str) -> List[_CamPair]:
     return pairs
 
 
+def _has_cv2(path: str) -> bool:
+    return os.path.isfile(os.path.join(path, "cv2", "__init__.py"))
+
+
+def _resolve_opencv_path(requested: str) -> str:
+    """Pick the best OpenCV Python path.
+
+    Resolution order:
+
+    1. ``requested`` (launch arg ``opencv_python_path``) -- if non-empty
+       and contains a valid ``cv2`` module, use it. If the dir exists
+       but does not contain ``cv2/__init__.py``, that's a hard error:
+       the operator pointed at the wrong place.
+    2. ``RACE_AUV_OPENCV_PATH`` env var -- same semantics as #1.
+    3. Auto-detect: probe the common ``/usr/local`` and ``/usr``
+       install locations (under both ``site-packages`` and
+       ``dist-packages`` for the active Python version). If found, use it.
+    4. Empty string -- the operator explicitly disabled the override;
+       we don't touch PYTHONPATH.
+    """
+    if requested and requested.strip():
+        path = requested.strip()
+        if _has_cv2(path):
+            return path
+        raise RuntimeError(
+            f"opencv_python_path={path!r} does not contain cv2/__init__.py. "
+            f"Check the install location of your custom OpenCV build "
+            f"(try `python3 -c \"import cv2; print(cv2.__file__)\"` to "
+            f"see what Python finds by default)."
+        )
+
+    env_path = os.environ.get("RACE_AUV_OPENCV_PATH", "").strip()
+    if env_path:
+        if _has_cv2(env_path):
+            return env_path
+        raise RuntimeError(
+            f"RACE_AUV_OPENCV_PATH={env_path!r} does not contain "
+            f"cv2/__init__.py. Check the install location."
+        )
+
+    for candidate in _opencv_probe_paths():
+        if _has_cv2(candidate):
+            return candidate
+
+    # Nothing found -- let the spawned node use whatever Python picks
+    # by default (probably the apt OpenCV). The detector will log
+    # `cv2 loaded from : /usr/lib/...` and the operator can fix.
+    return ""
+
+
 def _set_opencv_env(context, *args, **kwargs):
-    """Prepend ``opencv_python_path`` to PYTHONPATH for spawned nodes.
+    """Prepend the resolved OpenCV path to PYTHONPATH for spawned nodes.
 
     The camera driver (dwe_camera_driver) and the AprilTag detector
     (race_auv_camera_pkg) are both Python and both import cv2. If the
     apt-installed OpenCV wins the import race, ``cv2.cuda`` reports
     0 devices and the detector silently falls back to the CPU. We
-    fix this by explicitly prepending a directory to PYTHONPATH so
-    the user-built CUDA-enabled cv2 is found first.
-    """
-    opencv_path = LaunchConfiguration("opencv_python_path").perform(context).strip()
-    if not opencv_path:
-        return []
+    fix this by explicitly prepending the user-built CUDA-enabled
+    cv2 directory to PYTHONPATH.
 
-    # Sanity check: the dir must actually contain cv2/__init__.py.
-    if not os.path.isfile(os.path.join(opencv_path, "cv2", "__init__.py")):
-        # Don't silently break -- the user needs to know.
-        raise RuntimeError(
-            f"opencv_python_path={opencv_path!r} does not contain "
-            f"cv2/__init__.py. Check the install location of your "
-            f"custom OpenCV build."
-        )
+    Resolution: see ``_resolve_opencv_path``. The chosen path is
+    logged so the operator can confirm the override engaged.
+    """
+    requested = LaunchConfiguration("opencv_python_path").perform(context)
+    opencv_path = _resolve_opencv_path(requested)
+    if not opencv_path:
+        # Override disabled or no cv2 found -- nothing to do.
+        return []
 
     existing = os.environ.get("PYTHONPATH", "")
     new_pp = f"{opencv_path}:{existing}" if existing else opencv_path
+    print(f"[camera_apriltag.launch] prepending to PYTHONPATH: {opencv_path}")
     return [SetEnvironmentVariable("PYTHONPATH", new_pp)]
 
 
@@ -309,13 +363,16 @@ def generate_launch_description() -> LaunchDescription:
 
     opencv_arg = DeclareLaunchArgument(
         "opencv_python_path",
-        default_value=os.environ.get("RACE_AUV_OPENCV_PATH", _DEFAULT_OPENCV_PYTHON_PATH),
+        default_value="",
         description=(
             "PYTHONPATH prefix to prepend for spawned nodes so the "
             "CUDA-enabled OpenCV wins over the apt-installed one. "
-            "The dir must contain cv2/__init__.py. Empty string = "
-            "disable the override. Default: "
-            "/usr/local/lib/python{major}.{minor}/site-packages."
+            "The dir must contain cv2/__init__.py. "
+            "Empty string = auto-detect: probe /usr/local and /usr "
+            "under site-packages/ and dist-packages/ for the active "
+            "Python version. If auto-detect finds nothing, no "
+            "PYTHONPATH override is applied and Python's default "
+            "cv2 wins."
         ),
     )
 
