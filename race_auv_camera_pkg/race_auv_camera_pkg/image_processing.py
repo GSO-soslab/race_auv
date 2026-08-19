@@ -136,7 +136,7 @@ class ImageRectifier:
         )
         self.map1, self.map2 = cv2.fisheye.initUndistortRectifyMap(
             self._camera_matrix, d, np.eye(3), self.new_camera_matrix,
-            self._image_size, cv2.CV_16SC2,
+            self._image_size, cv2.CV_32F,
         )
 
         if self._crop:
