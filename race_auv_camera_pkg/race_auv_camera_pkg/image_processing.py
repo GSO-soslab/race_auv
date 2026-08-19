@@ -5,9 +5,10 @@ Two backend classes share the same API:
 * ``ImageRectifier`` -- CPU. Builds pre-computed OpenCV remap maps once
   and rectifies every frame with ``cv2.remap``. Universally available.
 * ``CUDAImageRectifier`` -- GPU via ``cv2.cuda``. Uploads the remap
-  maps once and runs ``cv2.cuda.remap`` per frame. Used when
-  ``APRILTAG_USE_CUDA=1`` is set and a CUDA-enabled OpenCV is present.
-  Falls back to ``ImageRectifier`` if construction fails.
+  maps once and runs ``cv2.cuda.remap`` per frame. Used when the
+  ``apriltag.yaml`` ``detector_defaults.use_cuda`` is true and a
+  CUDA-enabled OpenCV is present. Falls back to ``ImageRectifier`` if
+  construction fails.
 
 Both produce:
 
@@ -309,15 +310,15 @@ def build_rectifier(
     image_size: Tuple[int, int],
     is_fisheye: bool,
     crop_to_valid_pixels: bool,
-    prefer_cuda: bool,
+    use_cuda: bool,
 ) -> Tuple[object, str]:
-    """Build a rectifier using CUDA when available and ``prefer_cuda`` is true.
+    """Build a rectifier using CUDA when ``use_cuda`` is true.
 
     Returns ``(rectifier, backend_name)`` where ``backend_name`` is one
     of ``"cuda"`` or ``"cpu"``. The detector logs this at startup so
     operators can confirm HW acceleration is engaged.
     """
-    if prefer_cuda:
+    if use_cuda:
         try:
             r = CUDAImageRectifier(
                 logger=logger,

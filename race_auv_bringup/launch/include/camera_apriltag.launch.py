@@ -127,12 +127,11 @@ def _build_nodes(context, *args, **kwargs):
             tags_override = cfg.get("tags", []) or []
         tags_override_json = json.dumps(tags_override)
 
-        # Jetson / Foxglove perf knobs (per-camera).
+        # Jetson / Foxglove perf knobs (per-camera). HW-accel selection
+        # lives in detector_defaults (use_cuda, jpeg_backend); these
+        # per-camera knobs are pure image-pipeline tunings.
         process_scale = float(cam.get("process_scale", 1.0))
         jpeg_quality = int(cam.get("jpeg_quality", 80))
-        thread_priority = int(cam.get("thread_priority", 0))
-        cpu_affinity_list = [int(c) for c in cam.get("cpu_affinity", []) or []]
-        cpu_affinity = ",".join(str(c) for c in cpu_affinity_list)
 
         actions.append(
             Node(
@@ -153,8 +152,6 @@ def _build_nodes(context, *args, **kwargs):
                     "tags_override": tags_override_json,
                     "process_scale": process_scale,
                     "jpeg_quality": jpeg_quality,
-                    "thread_priority": thread_priority,
-                    "cpu_affinity": cpu_affinity,
                     "intrinsics.fx": float(intrinsics.get("fx", 0.0)),
                     "intrinsics.fy": float(intrinsics.get("fy", 0.0)),
                     "intrinsics.cx": float(intrinsics.get("cx", 0.0)),

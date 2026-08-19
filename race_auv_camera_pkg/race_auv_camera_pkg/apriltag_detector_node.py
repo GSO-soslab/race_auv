@@ -36,19 +36,25 @@ Two sources for the tag list:
 * Otherwise the YAML ``tags:`` list (the global fallback) is used.
 
 Jetson / Orin performance knobs
--------------------------------
-* ``APRILTAG_USE_CUDA=1`` env var -> ``cv2.cuda.remap`` for rectification
-  and ``pyNvJPEG`` (or ``cv2.cuda.encodeJpeg``) for the JPEG output.
-  Both auto-fall-back to the CPU path.
-* ``process_scale`` (per-camera, default 1.0) -> detect on a
+------------------------------
+All hardware-acceleration is configured in ``apriltag.yaml`` under
+``detector_defaults:`` -- no environment variables.
+
+* ``use_cuda`` (bool, default false) -- master switch for GPU
+  acceleration. When true, the rectifier tries ``cv2.cuda.remap`` and
+  the JPEG encoder tries hardware paths. Falls back to CPU gracefully
+  on any failure.
+* ``jpeg_backend`` (one of ``"auto"``, ``"nvjpeg"``, ``"cuda"``,
+  ``"cpu"``, default ``"auto"``) -- explicit selection of the
+  annotated-frame JPEG encoder. ``auto`` with ``use_cuda=true`` tries
+  pyNvJPEG (NVIDIA nvjpeg hardware), then ``cv2.cuda.encodeJpeg``,
+  then CPU. ``auto`` with ``use_cuda=false`` is CPU.
+* ``process_scale`` (per-camera, default 1.0) -- detect on a
   downscaled image; annotation stays at full resolution. 0.5 gives
   ~3-5x faster detection on Orin with negligible accuracy loss for
   dock-sized tags.
-* ``jpeg_quality`` (per-camera, default 80) -> quality for the
+* ``jpeg_quality`` (per-camera, default 80) -- quality for the
   annotated ``CompressedImage`` (Foxglove bandwidth knob).
-* ``thread_priority`` (per-camera, default 0) -> SCHED_FIFO when > 0.
-  Silently ignored if ``CAP_SYS_NICE`` is unavailable.
-* ``cpu_affinity`` (per-camera, default []) -> pin to specific cores.
 
 When ``info_topic`` is empty, the node falls back to intrinsics
 supplied via ROS parameters (typically populated by the launch file
@@ -59,7 +65,6 @@ driver, which does not publish ``CameraInfo`` by default.
 from __future__ import annotations
 
 import json
-import os
 import threading
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -82,7 +87,7 @@ from .apriltag_geom import (
     is_bad_rotation, load_yaml_config, matrix_to_pose_msg, sanitize_rotation,
 )
 from .apriltag_processor import AprilTagDetector
-from .image_jpeg import build_jpeg_encoder, cuda_acceleration_requested
+from .image_jpeg import build_jpeg_encoder
 from .image_processing import build_rectifier
 
 
@@ -135,27 +140,6 @@ def _draw_crosshair(image: np.ndarray) -> None:
              _CROSSHAIR_COLOR, _CROSSHAIR_THICKNESS, cv2.LINE_AA)
 
 
-def _apply_thread_priority(priority: int, affinity: List[int]) -> Tuple[bool, bool]:
-    """Best-effort SCHED_FIFO + CPU pinning. Returns ``(priority_ok, affinity_ok)``."""
-    pri_ok = False
-    aff_ok = False
-    if priority > 0:
-        try:
-            os.sched_setscheduler(
-                0, os.SCHED_FIFO, os.sched_param(int(priority)),
-            )
-            pri_ok = True
-        except (PermissionError, OSError):
-            pri_ok = False
-    if affinity:
-        try:
-            os.sched_setaffinity(0, set(int(c) for c in affinity))
-            aff_ok = True
-        except (PermissionError, OSError, AttributeError):
-            aff_ok = False
-    return pri_ok, aff_ok
-
-
 class AprilTagDetectorNode(Node):
     """Per-camera detector: image (+ optional CameraInfo) -> detections + image."""
 
@@ -181,9 +165,6 @@ class AprilTagDetectorNode(Node):
         # Jetson perf knobs (per-camera).
         self.declare_parameter("process_scale", 1.0)
         self.declare_parameter("jpeg_quality", 80)
-        self.declare_parameter("thread_priority", 0)
-        # Comma-separated list of CPU indices, e.g. "4,5,6,7". Empty = no pinning.
-        self.declare_parameter("cpu_affinity", "")
 
         # Intrinsics fallback (used when info_topic is empty).
         self.declare_parameter("intrinsics.fx", 0.0)
@@ -208,10 +189,11 @@ class AprilTagDetectorNode(Node):
         self._rectifier_backend: str = "cpu"
         self._jpeg_encoder: Optional[object] = None
         self._jpeg_backend: str = "cpu"
+        self._jpeg_backend_requested: str = "cpu"
         self._process_scale: float = 1.0
         self._ready = False
         self._bad_pose_count = 0
-        self._use_cuda = cuda_acceleration_requested()
+        self._use_cuda = False
 
         # Load tag list + detector defaults from YAML.
         self._tags_config: List[Dict] = []
@@ -249,20 +231,6 @@ class AprilTagDetectorNode(Node):
             raise ValueError("publish_rate must be > 0")
         self._timer = self.create_timer(1.0 / rate, self._tick)
 
-        # Process scheduling (best-effort).
-        prio = int(self.get_parameter("thread_priority").value or 0)
-        aff_raw = str(self.get_parameter("cpu_affinity").value or "")
-        aff = [int(x) for x in aff_raw.split(",") if x.strip()]
-        pri_ok, aff_ok = _apply_thread_priority(prio, aff)
-        if prio > 0:
-            self.get_logger().info(
-                f"thread_priority={prio} ({'applied' if pri_ok else 'DENIED -- needs CAP_SYS_NICE'})"
-            )
-        if aff:
-            self.get_logger().info(
-                f"cpu_affinity={aff} ({'applied' if aff_ok else 'DENIED -- needs CAP_SYS_NICE'})"
-            )
-
         self.get_logger().info(
             f"apriltag_detector ready: image={image_topic} "
             f"info={info_topic or '<yaml intrinsics>'} transport={transport} "
@@ -293,6 +261,10 @@ class AprilTagDetectorNode(Node):
             "refine_edges": bool(det_cfg.get("refine_edges", True)),
             "decode_sharpening": float(det_cfg.get("decode_sharpening", 0.25)),
         }
+
+        # HW-accel knobs (package-level, read from detector_defaults).
+        self._use_cuda = bool(det_cfg.get("use_cuda", False))
+        self._jpeg_backend_requested = str(det_cfg.get("jpeg_backend", "auto")).lower()
 
         tags_cfg: List[Dict] = []
         try:
@@ -428,7 +400,7 @@ class AprilTagDetectorNode(Node):
             image_size=(width, height),
             is_fisheye=is_fisheye,
             crop_to_valid_pixels=True,
-            prefer_cuda=self._use_cuda,
+            use_cuda=self._use_cuda,
         )
         new_K = self._rectifier.get_intrinsics()
         new_size = {
@@ -456,8 +428,16 @@ class AprilTagDetectorNode(Node):
         # --- JPEG encoder (CPU, cv2.cuda, or pyNvJPEG) -----------------------
         quality = int(self.get_parameter("jpeg_quality").value or 80)
         self._jpeg_encoder, self._jpeg_backend = build_jpeg_encoder(
-            quality=quality, prefer_cuda=self._use_cuda,
+            quality=quality,
+            use_cuda=self._use_cuda,
+            requested_backend=self._jpeg_backend_requested,
         )
+        if self._jpeg_backend_requested not in ("auto", "cpu") and \
+                self._jpeg_backend != self._jpeg_backend_requested:
+            self.get_logger().warn(
+                f"Requested jpeg_backend={self._jpeg_backend_requested!r} but "
+                f"fell back to {self._jpeg_backend!r} (see startup banner)."
+            )
 
         # --- Per-(family, size) detectors -----------------------------------
         groups = self._group_tags_by_family_size()
@@ -479,11 +459,11 @@ class AprilTagDetectorNode(Node):
         # --- Startup HW-accel banner ----------------------------------------
         self.get_logger().info(
             "=== HW acceleration ===\n"
+            f"  use_cuda (yaml) : {self._use_cuda}\n"
             f"  rectify backend : {self._rectifier_backend}\n"
-            f"  jpeg   backend  : {self._jpeg_backend}\n"
+            f"  jpeg   backend  : {self._jpeg_backend} (requested: {self._jpeg_backend_requested})\n"
             f"  process_scale   : {self._process_scale}\n"
-            f"  jpeg_quality    : {quality}\n"
-            f"  APRILTAG_USE_CUDA env: {'on' if self._use_cuda else 'off'}"
+            f"  jpeg_quality    : {quality}"
         )
 
     # =====================================================================

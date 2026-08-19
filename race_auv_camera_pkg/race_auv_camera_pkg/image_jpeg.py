@@ -6,35 +6,43 @@ topic and relayed to topside Foxglove via ``foxglove_bridge``. On a
 Orin the hardware JPEG encoder (NVIDIA nvjpeg) is ~3-5x faster than
 the OpenCV CPU encoder.
 
-Backend selection (in order):
+Backend selection is controlled entirely by the ``apriltag.yaml``
+``detector_defaults:`` block (no environment variables):
 
-1. **pyNvJPEG** -- NVIDIA's Python wrapper for the nvjpeg hardware
-   encoder. Preferred when importable. ``pip install pyNvJPEG``.
-2. **cv2.cuda.encodeJpeg** -- OpenCV CUDA backend, only present if the
-   installed OpenCV was built with ``WITH_NVCOMPRESS=ON``.
-3. **cv2.imencode** -- CPU fallback. Always available.
+    detector_defaults:
+      use_cuda: false          # master switch
+      jpeg_backend: "auto"     # "auto" | "nvjpeg" | "cuda" | "cpu"
 
-Both backends take a BGR numpy array and a quality (1-100) and return
+Resolution:
+
+* ``"auto"`` with ``use_cuda=true`` -> try ``pyNvJPEG`` first, then
+  ``cv2.cuda.encodeJpeg``, then CPU. The first one that imports /
+  initializes wins.
+* ``"auto"`` with ``use_cuda=false`` -> CPU.
+* ``"nvjpeg"`` -> require ``pyNvJPEG``. If not importable, fall back to
+  CPU with a warning (avoids silently producing wrong output if the
+  operator's expectation was that nvjpeg would be used).
+* ``"cuda"`` -> require ``cv2.cuda.encodeJpeg``. Falls back to CPU on
+  failure.
+* ``"cpu"`` -> ``cv2.imencode``.
+
+All backends take a BGR numpy array and a quality (1-100) and return
 JPEG bytes. The detector node wraps the encoded bytes in a
 ``sensor_msgs/CompressedImage`` directly -- we do NOT use
 ``cv_bridge.cv2_to_compressed_imgmsg`` for this so the JPEG params
 travel unchanged through the HW path.
-
-Activation is controlled by the environment variable
-``APRILTAG_USE_CUDA=1``. When unset the encoder always resolves to the
-CPU backend, so the same code works on dev machines and CI.
 """
 
 from __future__ import annotations
 
-import os
-from typing import Optional, Tuple
+from typing import Tuple
 
 import cv2
 import numpy as np
 
 
 _BGR2JPEG_QUALITY = int(cv2.IMWRITE_JPEG_QUALITY)
+_VALID_BACKENDS = ("auto", "nvjpeg", "cuda", "cpu")
 
 
 # =============================================================================
@@ -51,7 +59,7 @@ class _PyNvJpegBackend:
         self._nvjpeg = nvjpeg
         self._encoder = nvjpeg.JpegEncoder(device_id=0)
         self._quality = int(quality)
-        self._bgr_buf: Optional[np.ndarray] = None
+        self._bgr_buf: np.ndarray | None = None
 
     def encode(self, bgr: np.ndarray) -> bytes:
         h, w = bgr.shape[:2]
@@ -96,7 +104,6 @@ class _CpuEncodeBackend:
 
     def __init__(self, quality: int) -> None:
         self._quality = int(quality)
-        # Reuse the same params list across calls.
         self._params = [_BGR2JPEG_QUALITY, self._quality]
 
     def encode(self, bgr: np.ndarray) -> bytes:
@@ -109,29 +116,77 @@ class _CpuEncodeBackend:
 # =============================================================================
 # Selection helper
 # =============================================================================
-def build_jpeg_encoder(quality: int, prefer_cuda: bool) -> Tuple[object, str]:
-    """Pick the best available JPEG encoder.
+def _try_pynvjpeg(quality: int):
+    """Try to construct a ``pyNvJPEG`` backend. Returns ``None`` on any failure."""
+    try:
+        return _PyNvJpegBackend(quality)
+    except Exception:
+        return None
 
-    Returns ``(encoder, backend_name)`` where ``backend_name`` is one
-    of ``"nvjpeg"``, ``"cuda"``, or ``"cpu"``. The detector logs this
-    at startup so operators can confirm the HW path is engaged.
 
-    ``prefer_cuda`` is the environment-derived gate
-    (``os.environ.get("APRILTAG_USE_CUDA") == "1"``). When false the
-    function returns the CPU encoder immediately.
+def _try_cuda_encode(quality: int):
+    """Try to construct a ``cv2.cuda.encodeJpeg`` backend. Returns ``None`` on any failure."""
+    try:
+        return _CudaEncodeBackend(quality)
+    except Exception:
+        return None
+
+
+def build_jpeg_encoder(
+    quality: int,
+    use_cuda: bool,
+    requested_backend: str = "auto",
+) -> Tuple[object, str]:
+    """Pick the JPEG encoder per the YAML config.
+
+    Parameters
+    ----------
+    quality
+        JPEG quality 1-100.
+    use_cuda
+        Master GPU switch (``detector_defaults.use_cuda``). When false,
+        the GPU paths are skipped regardless of ``requested_backend``.
+    requested_backend
+        ``"auto"`` | ``"nvjpeg"`` | ``"cuda"`` | ``"cpu"``. Invalid
+        values are coerced to ``"auto"`` with a warning logged by the
+        caller (this function logs nothing).
+
+    Returns
+    -------
+    (encoder, backend_name)
+        ``backend_name`` is one of ``"nvjpeg"``, ``"cuda"``, ``"cpu"`` --
+        what was actually selected, after any fallbacks. The detector
+        logs this in its startup banner so operators can confirm HW
+        acceleration is engaged.
     """
-    if prefer_cuda:
-        try:
-            return _PyNvJpegBackend(quality), "nvjpeg"
-        except Exception:
-            pass
-        try:
-            return _CudaEncodeBackend(quality), "cuda"
-        except Exception:
-            pass
+    requested_backend = requested_backend.lower()
+    if requested_backend not in _VALID_BACKENDS:
+        requested_backend = "auto"
+
+    if requested_backend == "auto":
+        if use_cuda:
+            enc = _try_pynvjpeg(quality)
+            if enc is not None:
+                return enc, "nvjpeg"
+            enc = _try_cuda_encode(quality)
+            if enc is not None:
+                return enc, "cuda"
+        return _CpuEncodeBackend(quality), "cpu"
+
+    if requested_backend == "cpu":
+        return _CpuEncodeBackend(quality), "cpu"
+
+    if requested_backend == "nvjpeg":
+        enc = _try_pynvjpeg(quality)
+        if enc is not None:
+            return enc, "nvjpeg"
+        # Explicitly requested -- fall back to CPU (caller should warn).
+        return _CpuEncodeBackend(quality), "cpu"
+
+    # requested_backend == "cuda"
+    if not use_cuda:
+        return _CpuEncodeBackend(quality), "cpu"
+    enc = _try_cuda_encode(quality)
+    if enc is not None:
+        return enc, "cuda"
     return _CpuEncodeBackend(quality), "cpu"
-
-
-def cuda_acceleration_requested() -> bool:
-    """True iff ``APRILTAG_USE_CUDA=1`` is set in the environment."""
-    return os.environ.get("APRILTAG_USE_CUDA", "").strip().lower() in ("1", "true", "yes", "on")
