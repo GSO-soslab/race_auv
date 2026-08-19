@@ -19,7 +19,7 @@ def generate_launch_description():
     stellar_1_camera_node = Node(
         package='dwe_camera_driver',
         executable='camera_node',
-        name='stellar_camera_node',
+        name='stellar_camera_node_1',
         namespace='race',
         output='screen',
         parameters=[
@@ -38,7 +38,7 @@ def generate_launch_description():
     stellar_2_camera_node = Node(
         package='dwe_camera_driver',
         executable='camera_node',
-        name='stellar_camera_node',
+        name='stellar_camera_node_2',
         namespace='race',
         output='screen',
         parameters=[

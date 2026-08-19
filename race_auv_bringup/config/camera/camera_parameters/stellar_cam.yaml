@@ -13,15 +13,25 @@
     # Camera calibration
     camera:
       # --- Camera Intrinsics (REQUIRED for pose estimation) ---
-      # stellar air
+      # # stellar air
+      # intrinsics:
+      #   fx: 953.919689
+      #   fy: 954.022011
+      #   cx: 818.210277
+      #   cy: 665.849871
+      # # Distortion coefficients. Standard model: [k1, k2, p1, p2, k3...]. Fisheye model: [k1, k2, k3, k4].
+      # distortion: [-0.064599, -0.002388, 0.001767, 0.000415]
+      # # Set to true to use the fisheye model for undistortion, false for standard (plumb bob) model.
+      # fisheye: True
+      # # Set to true to crop the undistorted image to show only valid pixels (removes black borders).
+      # undistort_crop: True
+
+      # stellar underwater
       intrinsics:
-        fx: 953.919689
-        fy: 954.022011
-        cx: 818.210277
-        cy: 665.849871
-      # Distortion coefficients. Standard model: [k1, k2, p1, p2, k3...]. Fisheye model: [k1, k2, k3, k4].
-      distortion: [-0.064599, -0.002388, 0.001767, 0.000415]
-      # Set to true to use the fisheye model for undistortion, false for standard (plumb bob) model.
+        fx: 1262.74163
+        fy: 1262.40141
+        cx: 801.604094
+        cy: 670.832446
+      distortion: [-0.0011265, -0.1213276, 0.444942, -0.388063]
       fisheye: True
-      # Set to true to crop the undistorted image to show only valid pixels (removes black borders).
       undistort_crop: True

@@ -51,6 +51,6 @@ def generate_launch_description():
 
     return LaunchDescription([
         localization,
-        initialization,
+        # initialization,
         # thruster_velocity_model,
     ])

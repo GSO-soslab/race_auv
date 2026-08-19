@@ -62,9 +62,18 @@ class ImageRectifier:
 
     def _init_fisheye(self):
         """Initializes rectification for the fisheye model."""
-        if len(self._dist_coeffs) != 4:
-            self._logger.warn(f"Fisheye model selected, but {len(self._dist_coeffs)} distortion coefficients "
-                              f"were provided. Expected 4 (k1, k2, k3, k4).")
+        d = np.asarray(self._dist_coeffs, dtype=np.float64).ravel()[:4]
+        if d.size != 4:
+            raise ValueError(
+                f"Fisheye model requires exactly 4 distortion coefficients "
+                f"(k1, k2, k3, k4); got {self._dist_coeffs.size}."
+            )
+        if self._dist_coeffs.size > 4:
+            self._logger.warn(
+                f"Fisheye model received {self._dist_coeffs.size} distortion "
+                f"coefficients; using the first 4 (k1, k2, k3, k4) and ignoring "
+                f"the rest."
+            )
 
         # balance=0.0 crops to valid pixels, balance=1.0 shows all pixels.
         balance = 0.0 if self._crop else 1.0
@@ -74,12 +83,12 @@ class ImageRectifier:
         # Estimate the new camera matrix.
         # The new matrix is needed for initUndistortRectifyMap.
         self.new_camera_matrix = cv2.fisheye.estimateNewCameraMatrixForUndistortRectify(
-            self._camera_matrix, self._dist_coeffs, self._image_size, np.eye(3), balance=balance
+            self._camera_matrix, d, self._image_size, np.eye(3), balance=balance
         )
-        
+
         # Pre-compute the remap maps for efficiency.
         self.map1, self.map2 = cv2.fisheye.initUndistortRectifyMap(
-            self._camera_matrix, self._dist_coeffs, np.eye(3), self.new_camera_matrix,
+            self._camera_matrix, d, np.eye(3), self.new_camera_matrix,
             self._image_size, cv2.CV_16SC2
         )
 

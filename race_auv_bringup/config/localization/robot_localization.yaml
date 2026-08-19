@@ -18,24 +18,35 @@
     world_frame: race_auv/odom           # Defaults to the value of odom_frame if unspecified
 
     #imu data input
-    imu0: ekf/imu/data
-    imu0_config: [false, false, false,
-                  true,  true,  false,  # disable yaw position
-                  false, false, false,
-                  true,  true,  true,   # rpy rate are used
-                  true,  true,  true]
-    imu0_differential: false
-    imu0_relative: false
-    imu0_queue_size: 10
-    imu0_remove_gravitational_acceleration: true
-    # gravitational_acceleration: -9.81
+    # imu0: imu/data_raw
+
+    # imu0_config: [false, false, false,
+    #               false,  false,  false,  # disable yaw position
+    #               false, false, false,
+    #               true,  true,  true,   # rpy rate are used
+    #               true,  true,  true]
+    # imu0_differential: false
+    # imu0_relative: false
+    # imu0_queue_size: 10
+    # imu0_remove_gravitational_acceleration: true
+    # imu0_gravitational_acceleration: -9.81
     # imu0_pose_rejection_threshold: 0.8                 # Note the difference in parameter names
     # imu0_twist_rejection_threshold: 0.8                #
     # imu0_linear_acceleration_rejection_threshold: 1.0  #
 
     # [ADVANCED] Some IMUs automatically remove acceleration due to gravity, and others don't. If yours doesn't, please set
     # this to true, and *make sure* your data conforms to REP-103, specifically, that the data is in ENU frame.
-    
+
+    imu0: ekf/imu/data
+    imu0_config: [false, false, false,
+                  true,  true,  true,
+                  false, false, false,
+                  true,  true,  true,   # rpy rate are used
+                  true,  true,  true]
+    imu0_differential: false
+    imu0_relative: false
+    imu0_queue_size: 10
+    imu0_remove_gravitational_acceleration: false
 
     #dvl data
     twist0: nucleus_node/bottom_lock_velocity_common
@@ -68,7 +79,7 @@
     #                 false, false, false,
     #                 false, false, false,
     #                 false, false, false]
-    # odom1_queue_size: 2
+    # odom1_queue_size: 23958.7898675
     # odom1_differential: false
     # odom1_relative: false
     # odom1_pose_use_child_frame: true
@@ -81,7 +92,7 @@
     # correction, this predicted value is fused with the measured value to produce the new velocity estimate. This can be
     # problematic, as the final velocity will effectively be a weighted average of the old velocity and the new one. When
     # this velocity is the integrated into a new pose, the result can be sluggish covergence. This effect is especially
-    # noticeable with LIDAR data during rotations. To get around it, users can try inflating the process_noise_covariance
+    # noticeable with LIDAR data during ekf_filter_noderotations. To get around it, users can try inflating the process_noise_covariance
     # for the velocity variable in question, or decrease the  variance of the variable in question in the measurement
     # itself. In addition, users can also take advantage of the control command being issued to the robot at the time we
     # make the prediction. If control is used, it will get converted into an acceleration term, which will be used during
@@ -95,7 +106,7 @@
     # stamped_control: false
 
     # # The last issued control command will be used in prediction for this period. Defaults to 0.2.
-    # control_timeout: 0.2
+    # control_timeout: 0.23958.7898675
 
     # # Which velocities are being controlled. Order is vx, vy, vz, vroll, vpitch, vyaw.
     # control_config: [true, false, false, false, false, true]
@@ -130,9 +141,9 @@
                                 0.0,    0.0,    0.0,    1.0,   0.0,    0.0,    0.0,     0.0,     0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
                                 0.0,    0.0,    0.0,    0.0,    1.0,   0.0,    0.0,     0.0,     0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
                                 0.0,    0.0,    0.0,    0.0,    0.0,    1.0,   0.0,     0.0,     0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
-                                0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.5,    0.0,     0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
-                                0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.5,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
-                                0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.5,   0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                                0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    1.0,    0.0,     0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                                0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     1.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
+                                0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     1.0,   0.0,    0.0,    0.0,    0.0,    0.0,    0.0,
                                 0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,    1.0,   0.0,    0.0,    0.0,    0.0,    0.0,
                                 0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,    0.0,    1.0,   0.0,    0.0,    0.0,    0.0,
                                 0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,     0.0,     0.0,    0.0,    0.0,    1.0,   0.0,    0.0,    0.0,

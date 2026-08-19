@@ -17,12 +17,21 @@ control_modes:
 
 
   teleop:
-    v:     {p: 5.0 ,  i: 0.2,   d: 0.0, v: 5.0,  pid_max: 15, pid_min: -15}
+    v:     {p: 5.0 ,  i: 0.5,   d: 0.0, v: 5.0,  pid_max: 20, pid_min: -20}
     pitch:    {p: 5.0,   i: 1.0,  d: 0.0, v: 5.0,  pid_max: 20, pid_min: -20}
-    yaw:      {p: 4.0,   i: 0.2,   d: 0.0, v: 5.0,  pid_max: 15, pid_min: -15}
-    z:        {p: 15.0,   i: 1.0 ,  d: 0.0, v: 5.0,  pid_max: 30, pid_min: -30}
+    yaw:      {p: 5.0,   i: 0.2,   d: 0.0, v: 5.0,  pid_max: 15, pid_min: -15}
+    z:        {p: 15.0,   i: 0.8,  d: 0.0, v: 5.0,  pid_max: 30, pid_min: -30}
     # roll:     {p: 2.0,   i: 0.1,  d: 0.0, v: 5.0,  pid_max: 5, pid_min: -5}
-    u:    {p: 30.0,   i: 1.5,   d: 0.0, v: 5.0,   pid_max: 50, pid_min: -50}
+    u:    {p: 20.0,   i: 1.5,   d: 0.0, v: 5.0,   pid_max: 40, pid_min: -40}
+
+  # Noetic Teleop
+  # hold_dof:
+  # sway: {p: 5.0, i: 0.2, d: 5.0, pid_max: 15, pid_min: -15}
+  # pitch: {p: 5.0, i: 1.0, d: 3.0, pid_max: 20, pid_min: -20}
+  # yaw: {p: 4.0, i: 0.2, d: 8.0, pid_max: 15, pid_min: -15}
+  # z: {p: 15.0, i: 1.0, d: 5.0, pid_max: 30, pid_min: -30}
+  # roll: {p: 2.0, i: 0.1, d: 8.0, pid_max: 5, pid_min: -5}
+  # surge: {p: 30.0, i: 1.5, d: 5.0, pid_max: 50, pid_min: -50}
 
 thruster_ids:
   sway_stern:
@@ -45,7 +54,7 @@ thruster_ids:
       control_tf: heave_stern_port_thruster_link
       command_topic: control/thruster/heave_stern_port
       force_topic: control/force/heave_stern_port
-      limits: [-20.0, 20.0] #[min, max]
+      limits: [-15.0, 15.0] #[min, max]
       delta_limit: 1.0
       polynomials: [0.0305, 18.9527, 6.1205, 64.0375, 2.4386, -24.8871]
 
@@ -53,7 +62,7 @@ thruster_ids:
     control_tf: heave_stern_stbd_thruster_link
     command_topic: control/thruster/heave_stern_stbd
     force_topic: control/force/heave_stern_stbd
-    limits: [-20.0, 20.0] #[min, max]
+    limits: [-15.0, 15.0] #[min, max]
     delta_limit: 1.0
     polynomials: [0.0305, 18.9527, 6.1205, 64.0375, 2.4386, -24.8871]
 

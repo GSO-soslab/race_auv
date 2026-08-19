@@ -46,7 +46,8 @@ def generate_launch_description():
             package='tf2_ros',
             executable='static_transform_publisher',
             name='odom2world',
-            arguments = ["0.0", "0.0", "0.0", "0.0", "0.0", "0.0", robot_name+'/odom', robot_name+'/world']    
+            # arguments = ["0.0", "0.0", "0.0", "0.0", "0.0", "0.0", robot_name+'/odom', robot_name+'/world']    
+            arguments = ["0.0", "0.0", "0.0", "0.0", "0.0", "0.0", robot_name+'/world', robot_name+'/odom'] 
         ),
 
         Node(

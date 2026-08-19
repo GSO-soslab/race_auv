@@ -10,6 +10,11 @@
     reconnect_attempts : 10
     configure_after_reconnect : True
 
+    # Controls if the driver-defined setup is sent to the device
+    #     false - The driver will ignore the settings below and use the device's current settings
+    #     true  - Overwrite the current device settings with those listed below
+    device_setup : True
+
     # This will cause the node to convert any NED measurements to ENU
     # This will also cause the node to convert any vehicle frame measurements to the ROS definition of a vehicle frame
     use_enu_frame : True
@@ -19,7 +24,7 @@
 
 
     # The mode in which we will publish transforms to the below frame IDs
-    #     0 - No transforms will be published between any of the non static frame ids. (if publish_mount_to_frame_id_transform is true, it will still be published, and so will the antenna and odometer transforms)
+    #     0 - No transforms will be published betweenPurpose: Defines the filter cutoff frequency for accelerometer data when low-pass filtering is active. any of the non static frame ids. (if publish_mount_to_frame_id_transform is true, it will still be published, and so will the antenna and odometer transforms)
     #     1 - Global mode:
     #             Transform will be published from earth_frame_id to target_frame_id containing global position
     #     2 - Relative mode:
@@ -51,17 +56,76 @@
     filter_declination_source : 3
     filter_declination        : 0.0
 
-    filter_heading_source : 0
+    # Controls if the Kalman filter will auto-init or requires manual initialization
+    filter_auto_init : True
 
-    filter_adaptive_level : 3
+    # Controls if the Kalman filter is reset after the settings are configured
+    filter_reset_after_config : True
 
+    # Controls what kind of linear acceleration data is used in the Filter IMU message.
+    #     If this is set to true, the acceleration will not factor out gravity, if set to false gravity will be filtered out of the linear acceleration.
+    filter_use_compensated_accel : False
+
+    # (GQ7/CV7 full support, GX5-45 limited support) Adaptive filter settings
+    #     Adaptive level: 0 - off, 1 - Conservative, 2 = Moderate (default), 3 = agressive
+    #     Time limit: Max duration of measurement rejection prior to recovery, in milliseconds - default = 15000 
+    filter_adaptive_level         : 2
     filter_adaptive_time_limit_ms : 15000
 
+    # (All, except GQ7, CV7, -10, and -15 products) Heading Source 0 = None, 1 = magnetic, 2 = GNSS velocity (note: see manual for limitations)  
+    # Note: For the GQ7, this setting has no effect. See filter_auto_heading_alignment_selector
+    # Note: When using a -10/-AR product. This MUST be set to 0 or the node will not start
+    filter_heading_source : 0
+
+    # # Low pass filter configuration.
+    # # Note: The device may fail if one of these is enabled, and the device does not support the relevant measurement
+    # #   accel_* will affect data in /imu/data_raw if enabled
+    # #   gyro_* will affect data in /imu/data_raw if enabled
+    # #   mag_* will affect data in /imu/mag if enabled
+    # #   pressure_* will affect data in /imu/pressure if enabled
+    # low_pass_filter_config : True
+
+    # accel_low_pass_filter_enable    : True
+    # accel_low_pass_filter_auto      : True
+    # accel_low_pass_filter_frequency : 1
+
+    # gyro_low_pass_filter_enable    : True
+    # gyro_low_pass_filter_auto      : True
+    # gyro_low_pass_filter_frequency : 1
+
+    # Sensor2vehicle frame transformation selector
+    #     0 = None
+    #     1 = Euler Angles
+    #     2 = matrix
+    #     3 = quaternion
+    # Note: These are different ways of setting the same parameter in the device.
+    #       The different options are provided as a convenience.
+    #       Support for matrix and quaternion options is firmware version dependent (GQ7 supports Quaternion as of firmware 1.0.07)
+    #       Quaternion order is [i, j, k, w]
+    # Note: This can cause strange behavior when also using the ROS transform tree.
+    #       It is recommended to not use this if you want to use the ROS transform tree unless you really know what you are doing
+    # filter_sensor2vehicle_frame_selector : 1
+    # filter_sensor2vehicle_frame_transformation_euler      : [0.0, 0.0, 0.0]
+    # filter_sensor2vehicle_frame_transformation_matrix     : [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+    # filter_sensor2vehicle_frame_transformation_quaternion : [0.0, 0.0, 0.0, 1.0]
+
+
+
+    # ****************************************************************** 
+    # IMU Settings 
+    # ****************************************************************** 
+
+    # Static IMU message covariance values (the device does not generate these) 
+    imu_orientation_cov   : [0.01, 0.0, 0.0, 0.0, 0.01, 0.0, 0.0, 0.0, 0.01]
+    imu_linear_cov        : [0.01, 0.0, 0.0, 0.0, 0.01, 0.0, 0.0, 0.0, 0.01]
+    imu_angular_cov       : [0.01, 0.0, 0.0, 0.0, 0.01, 0.0, 0.0, 0.0, 0.01]
+    imu_mag_cov           : [0.01, 0.0, 0.0, 0.0, 0.01, 0.0, 0.0, 0.0, 0.01]
+    # imu_pressure_variance : 0.01
 
     # The speed at which the individual IMU publishers will publish at.
-    imu_data_raw_rate         : 0    # Rate of imu/data_raw topic
+    imu_data_raw_rate         : 100    # Rate of imu/data_raw topic
     imu_data_rate             : 100  # Rate of imu/data topic
-    imu_mag_data_rate         : 100    # Rate of imu/mag topic
+    imu_mag_data_rate         : 0    # Rate of imu/mag topic
     imu_pressure_data_rate    : 0    # Rate of imu/pressure topic
     imu_wheel_speed_data_rate : 0    # Rate of imu/wheel_Speed topic
 

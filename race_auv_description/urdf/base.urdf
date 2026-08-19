@@ -34,7 +34,8 @@
 
     <link name="imu"/>
     <joint name="imu_joint" type="fixed">
-        <origin xyz="-0.621 0.0 -0.120" rpy="3.1415926 0.0 3.1415926"/>
+        <!-- <origin xyz="-0.621 0.0 -0.120" rpy="3.1415926 0.0 3.1415926"/> -->
+        <origin xyz="-0.621 0.0 -0.120" rpy="0.0 0.0 -3.1415926"/>
         <parent link="nose_tip_link"/>
         <child link="imu"/>
     </joint>

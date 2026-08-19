@@ -191,7 +191,7 @@ class AprilTagDetectorNode(Node):
             self._try_build_from_yaml_intrinsics()
 
         self.image_pub = self.create_publisher(
-            Image, self.get_parameter("output_image_topic").value, out_qos,
+            CompressedImage, self.get_parameter("output_image_topic").value, out_qos,
         )
         self.detections_pub = self.create_publisher(
             Detection3DArray, self.get_parameter("output_detections_topic").value, out_qos,
@@ -354,7 +354,7 @@ class AprilTagDetectorNode(Node):
             dist_coeffs=D,
             image_size=(width, height),
             is_fisheye=is_fisheye,
-            crop_to_valid_pixels=False,
+            crop_to_valid_pixels=True,
         )
         new_K = self._rectifier.get_new_camera_params()
         new_size = self._rectifier.get_new_image_size()
@@ -450,7 +450,7 @@ class AprilTagDetectorNode(Node):
         cv2.line(work, (cx, cy - cross_arm), (cx, cy + cross_arm), cross_color, cross_thickness, cv2.LINE_AA)
 
         try:
-            img_msg = self._bridge.cv2_to_imgmsg(work, encoding="bgr8")
+            img_msg = self._bridge.cv2_to_compressed_imgmsg(work, dst_format='jpg')
             img_msg.header = detections_msg.header
             self.image_pub.publish(img_msg)
         except Exception as e:

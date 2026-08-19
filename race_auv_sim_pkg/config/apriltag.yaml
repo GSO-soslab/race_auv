@@ -53,14 +53,14 @@ apriltag:
     - { id: 9, family: "tag36h11", size: 0.125 }
     - { id: 22, family: "tag36h11", size: 0.125 }
     # 8 x tag36h11 @ 4cm
-    # - { id: 2, family: "tag36h11", size: 0.04  }
-    # - { id: 3, family: "tag36h11", size: 0.04  }
-    # - { id: 4, family: "tag36h11", size: 0.04  }
-    # - { id: 5, family: "tag36h11", size: 0.04  }
-    # - { id: 6, family: "tag36h11", size: 0.04  }
-    # - { id: 7, family: "tag36h11", size: 0.04  }
-    # - { id: 8, family: "tag36h11", size: 0.04  }
-    # - { id: 9, family: "tag36h11", size: 0.04  }
+    - { id: 54,  family: "tag36h11", size: 0.04  }
+    - { id: 55,  family: "tag36h11", size: 0.04  }
+    - { id: 205, family: "tag36h11", size: 0.04  }
+    - { id: 222, family: "tag36h11", size: 0.04  }
+    - { id: 541, family: "tag36h11", size: 0.04  }
+    - { id: 558, family: "tag36h11", size: 0.04  }
+    - { id: 568, family: "tag36h11", size: 0.04  }
+    - { id: 585, family: "tag36h11", size: 0.04  }
 
   # One entry per physical camera. Add / remove / enable cameras here.
   cameras:
@@ -69,9 +69,10 @@ apriltag:
       namespace: "cam_front"
       # Topic type: "raw"       -> sensor_msgs/Image
       #             "compressed" -> sensor_msgs/CompressedImage
-      image_transport: "raw"
-      image_topic: "/race_auv/cam_front/stonefish/data/image_color"
-      info_topic:  "/race_auv/cam_front/stonefish/data/camera_info"
+      image_transport: "compressed"
+      # image_topic: "/race_auv/cam_front/stonefish/data/image_color"
+      # info_topic:  "/race_auv/cam_front/stonefish/data/camera_info"
+      image_topic: "/race/stellar2/image/compressed"
       # Stonefish publishes CameraInfo with the bare sensor name ("cam1") but the
       # URDF robot_state_publisher uses the robot prefix ("race_auv/cam1"). Force
       # the detector to tag detections/TF frames with the URDF frame so the fuser
@@ -84,22 +85,33 @@ apriltag:
       output_image_topic: "apriltag_detection/image"
       output_detections_topic: "apriltag_detection/detections3d"
       # Intrinsics fallback (used only when info_topic is empty).
+      # intrinsics:
+      #   fx: 1262.74163
+      #   fy: 1262.40141
+      #   cx: 801.604094
+      #   cy: 670.832446
+      #   width: 1600
+      #   height: 1200
+      #   distortion: [-0.0011265, -0.1213276, 0.444942, -0.388063]
+      #   fisheye: true
+      # stellar air
       intrinsics:
-        fx: 0.0
-        fy: 0.0
-        cx: 0.0
-        cy: 0.0
-        width: 0
-        height: 0
-        distortion: [0.0, 0.0, 0.0, 0.0, 0.0]
-        fisheye: false
+        fx: 953.919689
+        fy: 954.022011
+        cx: 818.210277
+        cy: 665.849871
+        width: 1600
+        height: 1200
+        distortion: [-0.064599, -0.002388, 0.001767, 0.000415]
+        fisheye: true
 
     - name: "cam_down"
       enabled: true
       namespace: "cam_down"
-      image_transport: "raw"
-      image_topic: "/race_auv/cam_down/stonefish/data/image_color"
-      info_topic:  "/race_auv/cam_down/stonefish/data/camera_info"
+      image_transport: "compressed"
+      # image_topic: "/race_auv/cam_down/stonefish/data/image_color"
+      # info_topic:  "/race_auv/cam_down/stonefish/data/camera_info"
+      image_topic: "/race/stellar1/image/compressed"
       # Stonefish publishes CameraInfo with the bare sensor name ("cam2") but the
       # URDF robot_state_publisher uses the robot prefix ("race_auv/cam2"). Force
       # the detector to tag detections/TF frames with the URDF frame so the fuser
@@ -111,15 +123,26 @@ apriltag:
       tag_frame_prefix: "apriltag"
       output_image_topic: "apriltag_detection/image"
       output_detections_topic: "apriltag_detection/detections3d"
+      # intrinsics:
+      #   fx: 1262.74163
+      #   fy: 1262.40141
+      #   cx: 801.604094
+      #   cy: 670.832446
+      #   width: 1600
+      #   height: 1200
+      #   distortion: [-0.0011265, -0.1213276, 0.444942, -0.388063]
+      #   fisheye: true
+      # stellar air
       intrinsics:
-        fx: 0.0
-        fy: 0.0
-        cx: 0.0
-        cy: 0.0
-        width: 0
-        height: 0
-        distortion: [0.0, 0.0, 0.0, 0.0, 0.0]
-        fisheye: false
+        fx: 953.919689
+        fy: 954.022011
+        cx: 818.210277
+        cy: 665.849871
+        width: 1600
+        height: 1200
+        distortion: [-0.064599, -0.002388, 0.001767, 0.000415]
+        fisheye: true
+
 
   # Multi-camera fuser. Owns the single fused dock-point TF and a matching
   # PoseStamped topic. The published frame is the URDF link named by
