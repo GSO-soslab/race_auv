@@ -76,7 +76,7 @@ def _build_nodes(context, *args, **kwargs):
 
         actions.append(
             Node(
-                package="race_auv_sim_pkg",
+                package="race_auv_camera_pkg",
                 executable="apriltag_detector_node",
                 name=f"apriltag_detector_{name}",
                 namespace=ns,

@@ -11,6 +11,10 @@
   <depend>rclcpp</depend>
   <depend>std_msgs</depend>
   <exec_depend>ros2launch</exec_depend>
+  <exec_depend>dwe_camera_driver</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
   <depend>rviz2</depend>
   <depend>tf2_ros</depend>
   <test_depend>ament_lint_auto</test_depend>

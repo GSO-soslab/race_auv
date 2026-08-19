@@ -1,31 +1,29 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>race_auv_sim_pkg</name>
+  <name>race_auv_camera_pkg</name>
   <version>0.1.0</version>
-  <description>AprilTag fuser + ground-truth / overlay / sweep utilities for the Stonefish simulation. The detector itself lives in race_auv_camera_pkg.</description>
+  <description>
+    Camera + per-camera AprilTag detector scripts. This package ships only
+    Python (the apriltag_detector_node executable and its private modules)
+    and a CMakeLists / setup.py for ament_python; all configuration lives
+    in race_auv_bringup/config/ and all launch files in
+    race_auv_bringup/launch/include/.
+  </description>
   <maintainer email="dev@example.com">dev</maintainer>
   <license>MIT</license>
 
   <depend>rclpy</depend>
-  <depend>std_msgs</depend>
   <depend>sensor_msgs</depend>
-  <depend>geometry_msgs</depend>
-  <depend>nav_msgs</depend>
-  <depend>tf2_ros</depend>
   <depend>cv_bridge</depend>
   <depend>vision_msgs</depend>
-  <depend>message_filters</depend>
-  <depend>dwe_camera_driver</depend>
-  <depend>tf2_geometry_msgs</depend>
 
+  <exec_depend>dwe_camera_driver</exec_depend>
   <exec_depend>python3-opencv</exec_depend>
   <exec_depend>python3-pupil-apriltags</exec_depend>
   <exec_depend>python3-scipy</exec_depend>
   <exec_depend>python3-numpy</exec_depend>
   <exec_depend>python3-yaml</exec_depend>
-  <exec_depend>launch</exec_depend>
-  <exec_depend>launch_ros</exec_depend>
 
   <export>
     <build_type>ament_python</build_type>

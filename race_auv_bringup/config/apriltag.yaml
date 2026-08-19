@@ -1,0 +1,137 @@
+# AprilTag pipeline configuration for race_auv_camera_pkg.
+#
+# Single YAML for both the dwe_camera_driver instances (per-camera
+# `driver:` block) and the per-camera apriltag_detector_node
+# (everything else under each `cameras:` entry). The launch file
+# race_auv_bringup/launch/include/camera_apriltag.launch.py reads this
+# file.
+#
+# No fuser, no TF: the detector only publishes annotated images and
+# Detection3DArray topics.
+#
+# To add or remove a camera, edit the `cameras:` list.
+
+apriltag:
+  # Shared detector tuning applied to every apriltag_detector_node.
+  # Defaults are tuned for Jetson Orin (4 perf cores; 2x internal
+  # decimation in pupil_apriltags). Override per-camera if needed.
+  detector_defaults:
+    nthreads:          4
+    quad_decimate:     2.0
+    quad_sigma:        0.0
+    refine_edges:      true
+    decode_sharpening: 0.25
+    publish_rate:      5.0
+
+  # Master tag list. Each camera entry can override this with its own
+  # `tags:` list (recommended), or omit `tags:` to fall back to this
+  # list. IDs are per-family; pupil_apriltags uses the canonical
+  # lowercase name (e.g. "tag36h11").
+  tags:
+    # 4 x tag25h9 @ 21cm
+    - { id: 17, family: "tag25h9",  size: 0.21  }
+    - { id: 13, family: "tag25h9",  size: 0.21  }
+    - { id: 2,  family: "tag25h9",  size: 0.21  }
+    - { id: 25, family: "tag25h9",  size: 0.21  }
+    # 2 x tag36h11 @ 12.5cm
+    - { id: 9,  family: "tag36h11", size: 0.125 }
+    - { id: 22, family: "tag36h11", size: 0.125 }
+    # 8 x tag36h11 @ 4cm
+    - { id: 54,  family: "tag36h11", size: 0.04  }
+    - { id: 55,  family: "tag36h11", size: 0.04  }
+    - { id: 205, family: "tag36h11", size: 0.04  }
+    - { id: 222, family: "tag36h11", size: 0.04  }
+    - { id: 541, family: "tag36h11", size: 0.04  }
+    - { id: 558, family: "tag36h11", size: 0.04  }
+    - { id: 568, family: "tag36h11", size: 0.04  }
+    - { id: 585, family: "tag36h11", size: 0.04  }
+
+  # One entry per physical camera. Add / remove / enable cameras here.
+  cameras:
+    - name: "cam_front"
+      namespace: "cam_front"
+      enabled: true
+
+      # --- dwe_camera_driver block ---
+      driver:
+        node_name: "stellar_camera_node_2"
+        namespace: "race"
+        product_name: "usb-3610000.usb-2.3"   # stellar2 -> front
+        remap_image_compressed:        "stellar2/image/compressed"
+        remap_image_lowbw_compressed:  "stellar2/image_lowbw/compressed"
+        remap_camera_settings:         "stellar2/camera_settings"
+
+      # --- apriltag_detector_node block ---
+      detector_namespace: "cam_front"
+      image_transport: "compressed"
+      image_topic: "/race/stellar2/image/compressed"
+      camera_frame: "race_auv/cam_front"
+      output_image_topic:     "apriltag_detection/image"
+      output_detections_topic: "apriltag_detection/detections3d"
+      publish_rate: 5.0
+      # cam_front only ever sees tag25h9 @ 21cm + tag36h11 @ 12.5cm
+      tags:
+        - { id: 17, family: "tag25h9",  size: 0.21 }
+        - { id: 13, family: "tag25h9",  size: 0.21 }
+        - { id: 9,  family: "tag36h11", size: 0.125 }
+        - { id: 22, family: "tag36h11", size: 0.125 }
+      # stellar air intrinsics fallback (used only when info_topic is empty).
+      intrinsics:
+        fx: 953.919689
+        fy: 954.022011
+        cx: 818.210277
+        cy: 665.849871
+        width: 1600
+        height: 1200
+        distortion: [-0.064599, -0.002388, 0.001767, 0.000415]
+        fisheye: true
+
+      # --- Jetson / Foxglove perf knobs ---
+      process_scale: 0.5        # detect on 800x600; annotate stays full-res
+      jpeg_quality: 75          # Foxglove / topside bandwidth vs. detail
+      thread_priority: 10       # SCHED_FIFO; needs CAP_SYS_NICE
+      cpu_affinity: [4, 5, 6, 7] # Orin perf cores (4-7); LITTLE is 0-3
+
+    - name: "cam_down"
+      namespace: "cam_down"
+      enabled: true
+
+      driver:
+        node_name: "stellar_camera_node_1"
+        namespace: "race"
+        product_name: "usb-3610000.usb-2.1"   # stellar1 -> down
+        remap_image_compressed:        "stellar1/image/compressed"
+        remap_image_lowbw_compressed:  "stellar1/image_lowbw/compressed"
+        remap_camera_settings:         "stellar1/camera_settings"
+
+      detector_namespace: "cam_down"
+      image_transport: "compressed"
+      image_topic: "/race/stellar1/image/compressed"
+      camera_frame: "race_auv/cam_down"
+      output_image_topic:     "apriltag_detection/image"
+      output_detections_topic: "apriltag_detection/detections3d"
+      publish_rate: 5.0
+      # cam_down only ever sees tag36h11 @ 4cm
+      tags:
+        - { id: 54,  family: "tag36h11", size: 0.04 }
+        - { id: 55,  family: "tag36h11", size: 0.04 }
+        - { id: 205, family: "tag36h11", size: 0.04 }
+        - { id: 222, family: "tag36h11", size: 0.04 }
+        - { id: 541, family: "tag36h11", size: 0.04 }
+        - { id: 558, family: "tag36h11", size: 0.04 }
+        - { id: 568, family: "tag36h11", size: 0.04 }
+        - { id: 585, family: "tag36h11", size: 0.04 }
+      intrinsics:
+        fx: 953.919689
+        fy: 954.022011
+        cx: 818.210277
+        cy: 665.849871
+        width: 1600
+        height: 1200
+        distortion: [-0.064599, -0.002388, 0.001767, 0.000415]
+        fisheye: true
+
+      process_scale: 0.5
+      jpeg_quality: 75
+      thread_priority: 10
+      cpu_affinity: [4, 5, 6, 7]
