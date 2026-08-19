@@ -24,13 +24,13 @@ apriltag:
     quad_sigma:        0.0
     refine_edges:      true
     decode_sharpening: 0.25
-    publish_rate:      5.0
+    publish_rate:      15.0
 
     # --- Hardware acceleration (Jetson / Orin / any CUDA-capable host) ---
     # Master switch. When true, the rectifier tries cv2.cuda.remap and
     # the JPEG encoder tries hardware paths. Falls back to CPU
     # gracefully on any failure (missing module, no CUDA device, etc.).
-    use_cuda: false
+    use_cuda: true
 
     # JPEG encoder for the annotated CompressedImage published to
     # Foxglove / topside. One of:
@@ -39,7 +39,7 @@ apriltag:
     #   "nvjpeg" -- NVIDIA pyNvJPEG hardware encoder (Jetson only).
     #   "cuda"   -- cv2.cuda.encodeJpeg (OpenCV built with NVCOMPRESS).
     #   "cpu"    -- cv2.imencode.
-    jpeg_backend: "auto"
+    jpeg_backend: "cuda"
 
   # Master tag list. Each camera entry can override this with its own
   # `tags:` list (recommended), or omit `tags:` to fall back to this
@@ -86,7 +86,7 @@ apriltag:
       camera_frame: "race_auv/cam_front"
       output_image_topic:     "apriltag_detection/image"
       output_detections_topic: "apriltag_detection/detections3d"
-      publish_rate: 5.0
+      publish_rate: 15.0
       # # cam_front only ever sees tag25h9 @ 21cm + tag36h11 @ 12.5cm
       # tags:
       #   - { id: 17, family: "tag25h9",  size: 0.21 }
@@ -126,7 +126,7 @@ apriltag:
       camera_frame: "race_auv/cam_down"
       output_image_topic:     "apriltag_detection/image"
       output_detections_topic: "apriltag_detection/detections3d"
-      publish_rate: 5.0
+      publish_rate: 15.0
       # cam_down only ever sees tag36h11 @ 4cm
       tags:
         # 2 x tag36h11 @ 12.5cm

@@ -263,14 +263,14 @@ class AprilTagDetector:
             cv2.polylines(
                 image, [corners], isClosed=True, color=_BOX_OK, thickness=_LINE_THICKNESS,
             )
-            cv2.drawFrameAxes(
-                image,
-                self.camera_matrix,
-                self.dist_coeffs,
-                rvec,
-                tvec,
-                self.tag_size * 0.5,
-            )
+            # cv2.drawFrameAxes(
+            #     image,
+            #     self.camera_matrix,
+            #     self.dist_coeffs,
+            #     rvec,
+            #     tvec,
+            #     self.tag_size * 0.5,
+            # )
 
             # stacked label block above the box
             anchor_x = int(corners[:, 0].min())
