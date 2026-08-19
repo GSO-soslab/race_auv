@@ -303,6 +303,30 @@ class CUDAImageRectifier:
 # =============================================================================
 # Selection helper
 # =============================================================================
+
+# Map a CUDAImageRectifier constructor failure message to a one-line
+# actionable hint. Surfaced when ``use_cuda: true`` was requested but
+# the GPU path didn't engage -- the operator shouldn't have to grep the
+# OpenCV docs to figure out what's wrong.
+_CUDA_RECTIFIER_HINTS = (
+    ("no CUDA-enabled devices",
+     "hint: pip's opencv-python has no CUDA support. Uninstall it and "
+     "install NVIDIA's JetPack system opencv: "
+     "`pip uninstall -y opencv-python opencv-contrib-python && "
+     "sudo apt install python3-opencv`."),
+    ("libcuda", "hint: libcuda.so not found -- check CUDA toolkit install."),
+)
+
+
+def _cuda_rectifier_hint(exc: Exception) -> str:
+    """Best-effort actionable hint for a CUDA rectifier init failure."""
+    msg = str(exc).lower()
+    for needle, hint in _CUDA_RECTIFIER_HINTS:
+        if needle.lower() in msg:
+            return hint
+    return ""
+
+
 def build_rectifier(
     logger,
     camera_matrix: np.ndarray,
@@ -330,9 +354,10 @@ def build_rectifier(
             )
             return r, "cuda"
         except Exception as e:
-            logger.warn(
-                f"CUDA rectifier unavailable ({e!r}); falling back to CPU."
-            )
+            hint = _cuda_rectifier_hint(e)
+            logger.warn(f"CUDA rectifier unavailable ({e!r}); falling back to CPU.")
+            if hint:
+                logger.warn(hint)
     r = ImageRectifier(
         logger=logger,
         camera_matrix=camera_matrix,

@@ -427,10 +427,11 @@ class AprilTagDetectorNode(Node):
 
         # --- JPEG encoder (CPU, cv2.cuda, or pyNvJPEG) -----------------------
         quality = int(self.get_parameter("jpeg_quality").value or 80)
-        self._jpeg_encoder, self._jpeg_backend = build_jpeg_encoder(
+        self._jpeg_encoder, self._jpeg_backend, jpeg_hints = build_jpeg_encoder(
             quality=quality,
             use_cuda=self._use_cuda,
             requested_backend=self._jpeg_backend_requested,
+            logger=self.get_logger(),
         )
         if self._jpeg_backend_requested not in ("auto", "cpu") and \
                 self._jpeg_backend != self._jpeg_backend_requested:
@@ -457,14 +458,19 @@ class AprilTagDetectorNode(Node):
             )
 
         # --- Startup HW-accel banner ----------------------------------------
-        self.get_logger().info(
-            "=== HW acceleration ===\n"
-            f"  use_cuda (yaml) : {self._use_cuda}\n"
-            f"  rectify backend : {self._rectifier_backend}\n"
-            f"  jpeg   backend  : {self._jpeg_backend} (requested: {self._jpeg_backend_requested})\n"
-            f"  process_scale   : {self._process_scale}\n"
-            f"  jpeg_quality    : {quality}"
-        )
+        lines = [
+            "=== HW acceleration ===",
+            f"  use_cuda (yaml) : {self._use_cuda}",
+            f"  rectify backend : {self._rectifier_backend}",
+            f"  jpeg   backend  : {self._jpeg_backend} (requested: {self._jpeg_backend_requested})",
+            f"  process_scale   : {self._process_scale}",
+            f"  jpeg_quality    : {quality}",
+        ]
+        for hint in jpeg_hints:
+            lines.append(f"  hint            : {hint}")
+        self.get_logger().info("\n".join(lines))
+        for hint in jpeg_hints:
+            self.get_logger().warn(f"HW fallback hint: {hint}")
 
     # =====================================================================
     # Image callbacks

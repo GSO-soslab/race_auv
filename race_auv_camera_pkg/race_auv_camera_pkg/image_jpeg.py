@@ -132,11 +132,26 @@ def _try_cuda_encode(quality: int):
         return None
 
 
+def _nvjpeg_hint() -> str:
+    """Actionable hint when pyNvJPEG can't be imported."""
+    return "hint: install NVIDIA's hardware JPEG encoder: `pip install pyNvJPEG`."
+
+
+def _cuda_encode_hint() -> str:
+    """Actionable hint when cv2.cuda.encodeJpeg is unavailable."""
+    return (
+        "hint: cv2.cuda.encodeJpeg missing -- OpenCV was not built with "
+        "NVCOMPRESS. Use `jpeg_backend: \"nvjpeg\"` (after installing "
+        "pyNvJPEG) or `jpeg_backend: \"cpu\"`."
+    )
+
+
 def build_jpeg_encoder(
     quality: int,
     use_cuda: bool,
     requested_backend: str = "auto",
-) -> Tuple[object, str]:
+    logger=None,
+) -> Tuple[object, str, list]:
     """Pick the JPEG encoder per the YAML config.
 
     Parameters
@@ -150,43 +165,64 @@ def build_jpeg_encoder(
         ``"auto"`` | ``"nvjpeg"`` | ``"cuda"`` | ``"cpu"``. Invalid
         values are coerced to ``"auto"`` with a warning logged by the
         caller (this function logs nothing).
+    logger
+        Optional rclpy-compatible logger. When provided, hints are
+        logged for any silent fallback so the operator sees *why* HW
+        wasn't engaged.
 
     Returns
     -------
-    (encoder, backend_name)
-        ``backend_name`` is one of ``"nvjpeg"``, ``"cuda"``, ``"cpu"`` --
-        what was actually selected, after any fallbacks. The detector
-        logs this in its startup banner so operators can confirm HW
-        acceleration is engaged.
+    (encoder, backend_name, hints)
+        ``backend_name`` is one of ``"nvjpeg"``, ``"cuda"``, ``"cpu"``
+        -- what was actually selected, after any fallbacks. ``hints``
+        is a list of human-readable strings the caller can log
+        alongside the HW banner.
     """
     requested_backend = requested_backend.lower()
     if requested_backend not in _VALID_BACKENDS:
         requested_backend = "auto"
 
+    hints: list[str] = []
+
+    def _log(msg: str) -> None:
+        if logger is not None:
+            logger.warn(msg)
+
     if requested_backend == "auto":
         if use_cuda:
             enc = _try_pynvjpeg(quality)
             if enc is not None:
-                return enc, "nvjpeg"
+                return enc, "nvjpeg", hints
+            hints.append(_nvjpeg_hint())
             enc = _try_cuda_encode(quality)
             if enc is not None:
-                return enc, "cuda"
-        return _CpuEncodeBackend(quality), "cpu"
+                return enc, "cuda", hints
+            hints.append(_cuda_encode_hint())
+        return _CpuEncodeBackend(quality), "cpu", hints
 
     if requested_backend == "cpu":
-        return _CpuEncodeBackend(quality), "cpu"
+        return _CpuEncodeBackend(quality), "cpu", hints
 
     if requested_backend == "nvjpeg":
         enc = _try_pynvjpeg(quality)
         if enc is not None:
-            return enc, "nvjpeg"
-        # Explicitly requested -- fall back to CPU (caller should warn).
-        return _CpuEncodeBackend(quality), "cpu"
+            return enc, "nvjpeg", hints
+        hints.append(_nvjpeg_hint())
+        # Explicitly requested -- fall back to CPU with the hint.
+        for h in hints:
+            _log(h)
+        return _CpuEncodeBackend(quality), "cpu", hints
 
     # requested_backend == "cuda"
     if not use_cuda:
-        return _CpuEncodeBackend(quality), "cpu"
+        hints.append(
+            "hint: use_cuda is false, so jpeg_backend='cuda' was skipped."
+        )
+        return _CpuEncodeBackend(quality), "cpu", hints
     enc = _try_cuda_encode(quality)
     if enc is not None:
-        return enc, "cuda"
-    return _CpuEncodeBackend(quality), "cpu"
+        return enc, "cuda", hints
+    hints.append(_cuda_encode_hint())
+    for h in hints:
+        _log(h)
+    return _CpuEncodeBackend(quality), "cpu", hints
