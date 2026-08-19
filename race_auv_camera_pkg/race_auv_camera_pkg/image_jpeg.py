@@ -141,8 +141,9 @@ def _cuda_encode_hint() -> str:
     """Actionable hint when cv2.cuda.encodeJpeg is unavailable."""
     return (
         "hint: cv2.cuda.encodeJpeg missing -- OpenCV was not built with "
-        "NVCOMPRESS. Use `jpeg_backend: \"nvjpeg\"` (after installing "
-        "pyNvJPEG) or `jpeg_backend: \"cpu\"`."
+        "NVCOMPRESS. Set `jpeg_backend: \"cpu\"` (Jetson Orin Nano "
+        "does not support nvjpeg; on Orin NX / AGX you can also "
+        "`pip install pyNvJPEG` and use `jpeg_backend: \"nvjpeg\"`)."
     )
 
 
