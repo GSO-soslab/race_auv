@@ -52,12 +52,13 @@ more or less on a different host.
 
 import json
 import os
+import sys
 from typing import Any, Dict, List, NamedTuple
 
 import yaml
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, OpaqueFunction, TimerAction
+from launch.actions import DeclareLaunchArgument, OpaqueFunction, SetEnvironmentVariable, TimerAction
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -65,6 +66,17 @@ from launch_ros.actions import Node
 # Delay between consecutive spawns (camera1, camera2, detector1, detector2).
 # 2 s is enough on Jetson Orin to clear the UVC probe race for /dev/video2.
 _INTER_NODE_DELAY_S = 2.0
+
+# Default path to prepend to PYTHONPATH so the spawned subprocesses
+# (camera_node, apriltag_detector_node -- both Python) load the
+# CUDA-enabled OpenCV build instead of the apt-installed one.
+#
+# Default order matches a typical `cmake -DCMAKE_INSTALL_PREFIX=/usr/local`
+# install on Debian / Ubuntu / NVIDIA L4T (Jetson). Override at launch
+# time with `opencv_python_path:=<dir>` if your build went elsewhere
+# (e.g. /home/<user>/opencv-install/lib/python3.12/site-packages).
+import sys as _sys
+_DEFAULT_OPENCV_PYTHON_PATH = f"/usr/local/lib/python{_sys.version_info.major}.{_sys.version_info.minor}/site-packages"
 
 
 class _CamPair(NamedTuple):
@@ -217,6 +229,34 @@ def _build_pairs(config_path: str) -> List[_CamPair]:
     return pairs
 
 
+def _set_opencv_env(context, *args, **kwargs):
+    """Prepend ``opencv_python_path`` to PYTHONPATH for spawned nodes.
+
+    The camera driver (dwe_camera_driver) and the AprilTag detector
+    (race_auv_camera_pkg) are both Python and both import cv2. If the
+    apt-installed OpenCV wins the import race, ``cv2.cuda`` reports
+    0 devices and the detector silently falls back to the CPU. We
+    fix this by explicitly prepending a directory to PYTHONPATH so
+    the user-built CUDA-enabled cv2 is found first.
+    """
+    opencv_path = LaunchConfiguration("opencv_python_path").perform(context).strip()
+    if not opencv_path:
+        return []
+
+    # Sanity check: the dir must actually contain cv2/__init__.py.
+    if not os.path.isfile(os.path.join(opencv_path, "cv2", "__init__.py")):
+        # Don't silently break -- the user needs to know.
+        raise RuntimeError(
+            f"opencv_python_path={opencv_path!r} does not contain "
+            f"cv2/__init__.py. Check the install location of your "
+            f"custom OpenCV build."
+        )
+
+    existing = os.environ.get("PYTHONPATH", "")
+    new_pp = f"{opencv_path}:{existing}" if existing else opencv_path
+    return [SetEnvironmentVariable("PYTHONPATH", new_pp)]
+
+
 def _build_nodes(context, *args, **kwargs):
     config_path = LaunchConfiguration("config").perform(context)
     pairs = _build_pairs(config_path)
@@ -267,7 +307,21 @@ def generate_launch_description() -> LaunchDescription:
         ),
     )
 
+    opencv_arg = DeclareLaunchArgument(
+        "opencv_python_path",
+        default_value=os.environ.get("RACE_AUV_OPENCV_PATH", _DEFAULT_OPENCV_PYTHON_PATH),
+        description=(
+            "PYTHONPATH prefix to prepend for spawned nodes so the "
+            "CUDA-enabled OpenCV wins over the apt-installed one. "
+            "The dir must contain cv2/__init__.py. Empty string = "
+            "disable the override. Default: "
+            "/usr/local/lib/python{major}.{minor}/site-packages."
+        ),
+    )
+
     return LaunchDescription([
         config_arg,
+        opencv_arg,
+        OpaqueFunction(function=_set_opencv_env),
         OpaqueFunction(function=_build_nodes),
     ])

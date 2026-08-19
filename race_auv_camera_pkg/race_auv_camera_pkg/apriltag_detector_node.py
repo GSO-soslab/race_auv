@@ -200,6 +200,22 @@ class AprilTagDetectorNode(Node):
         self._detector_params_template: Dict = {}
         self._load_yaml_config()
 
+        # ---- cv2 diagnostic -------------------------------------------------
+        # Confirm which OpenCV this process actually loaded and whether
+        # CUDA is reachable. The launch file sets PYTHONPATH to a
+        # CUDA-enabled build directory; if `cv2.__file__` here still
+        # points at the apt OpenCV, the override didn't take effect
+        # and CUDA will silently fall back to CPU.
+        try:
+            cuda_devs = int(cv2.cuda.getCudaEnabledDeviceCount())
+        except Exception:
+            cuda_devs = -1
+        self.get_logger().info(
+            f"cv2 loaded from : {cv2.__file__}\n"
+            f"cv2 build info  : {cv2.getBuildInformation().splitlines()[0]}\n"
+            f"cv2 cuda devices: {cuda_devs}"
+        )
+
         # -------------------------------------------------------- subscriptions
         transport = str(self.get_parameter("image_transport").value or "raw").lower()
         image_topic = str(self.get_parameter("image_topic").value or "")
