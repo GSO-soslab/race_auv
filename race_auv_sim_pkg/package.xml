@@ -1,9 +1,15 @@
 <?xml version="1.0"?>
-<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.ros.org/wiki/package_format3/Description"?>
 <package format="3">
   <name>race_auv_sim_pkg</name>
   <version>0.1.0</version>
-  <description>AprilTag fuser + ground-truth / overlay / sweep utilities for the Stonefish simulation. The detector itself lives in race_auv_camera_pkg.</description>
+  <description>
+    Stonefish-specific sim utilities for the race_auv docking scenarios:
+    ground-truth docking-pose publisher, light-overlay visualization for
+    synthetic camera images, and the Jerlov water-parameter sweep. All
+    apriltag/camera pipeline code (per-camera detector + multi-camera fuser
+    + URDF parser) lives in race_auv_camera_pkg.
+  </description>
   <maintainer email="dev@example.com">dev</maintainer>
   <license>MIT</license>
 
@@ -14,14 +20,11 @@
   <depend>nav_msgs</depend>
   <depend>tf2_ros</depend>
   <depend>cv_bridge</depend>
-  <depend>vision_msgs</depend>
   <depend>message_filters</depend>
   <depend>dwe_camera_driver</depend>
   <depend>tf2_geometry_msgs</depend>
 
   <exec_depend>python3-opencv</exec_depend>
-  <exec_depend>python3-pupil-apriltags</exec_depend>
-  <exec_depend>python3-scipy</exec_depend>
   <exec_depend>python3-numpy</exec_depend>
   <exec_depend>python3-yaml</exec_depend>
   <exec_depend>launch</exec_depend>

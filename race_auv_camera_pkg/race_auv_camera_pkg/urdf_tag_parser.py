@@ -2,7 +2,8 @@
 
 Convention: a tag belonging to AprilTag family ``<family>`` with numeric id
 ``<id>`` is a child link named ``"apriltag<family>_<id>"`` rigidly fixed-jointed
-to the object's base link. Examples::
+to the object's base link (possibly through intermediate fixed-joint links such
+as ``dock_point``). Examples::
 
     apriltag25h9_0   -> family="tag25h9",  id=0
     apriltag36h11_5  -> family="tag36h11", id=5
@@ -129,6 +130,74 @@ def _parse_tag_link(child_link: str, prefix: str) -> Optional[Tuple[str, int]]:
     return f"tag{m.group('family_short')}", int(m.group("id"))
 
 
+def _build_fixed_joint_parent_map(
+    urdf_path: Path,
+) -> Dict[str, Tuple[str, np.ndarray]]:
+    """Return ``{child_link: (parent_link, T_parent_to_child)}`` for every fixed joint.
+
+    Joints whose ``<child>`` references a link already populated by an
+    earlier fixed joint raise ``ValueError`` (URDF has exactly one parent
+    per link). Non-fixed joints are skipped; the caller is responsible for
+    detecting non-fixed chains during a walk.
+    """
+    root = ET.parse(str(urdf_path)).getroot()
+    parent_of: Dict[str, Tuple[str, np.ndarray]] = {}
+    for joint in root.findall("joint"):
+        if joint.get("type", "").lower() != "fixed":
+            continue
+        parent_el = joint.find("parent")
+        child_el = joint.find("child")
+        if parent_el is None or child_el is None:
+            continue
+        parent = parent_el.get("link", "")
+        child = child_el.get("link", "")
+        if not parent or not child:
+            continue
+        if child in parent_of:
+            raise ValueError(
+                f"Link '{child}' has multiple fixed-joint parents in "
+                f"{urdf_path}: '{parent_of[child][0]}' and '{parent}'. "
+                "URDF requires exactly one parent per link."
+            )
+        parent_of[child] = (parent, _origin_to_homogeneous(joint.find("origin")))
+    return parent_of
+
+
+def _compose_fixed_chain(
+    parent_of: Dict[str, Tuple[str, np.ndarray]],
+    link: str,
+    base: str,
+    urdf_path: Path,
+) -> np.ndarray:
+    """Walk the fixed-joint chain from ``link`` to ``base`` and compose ``T_base_to_link``.
+
+    The result satisfies ``T_base_to_link = T_base_to_x_1 @ T_x_1_to_x_2 @ ... @ T_x_n_to_link``.
+    Raises ``ValueError`` if the chain is broken, contains a non-fixed joint,
+    or forms a cycle.
+    """
+    if link == base:
+        return np.eye(4)
+    T = np.eye(4)
+    visited: Set[str] = set()
+    cur = link
+    while cur != base:
+        visited.add(cur)
+        if cur not in parent_of:
+            raise ValueError(
+                f"Link '{link}' has no fixed-joint chain to base '{base}' "
+                f"in {urdf_path} (stuck at '{cur}')"
+            )
+        parent, T_parent_to_child = parent_of[cur]
+        T = T_parent_to_child @ T
+        if parent in visited:
+            raise ValueError(
+                f"Cycle detected in URDF chain from '{link}' to "
+                f"'{base}' via '{parent}' in {urdf_path}"
+            )
+        cur = parent
+    return T
+
+
 def extract_tag_transforms(
     urdf_path: str | Path,
     prefix: str = "apriltag",
@@ -136,6 +205,12 @@ def extract_tag_transforms(
     families: Optional[Iterable[str]] = None,
 ) -> Dict[Tuple[str, int], TagTransform]:
     """Walk the URDF joints and return ``base -> tag`` for every tag link.
+
+    The returned ``T_base_to_tag`` is the **full** transform from the base
+    link to the tag link, composing every parent->child fixed joint on
+    the path. This means tags that are nested under an intermediate link
+    (e.g. ``dock_point``) are handled transparently -- the joint's
+    immediate parent does not need to be the base link.
 
     Parameters
     ----------
@@ -177,22 +252,22 @@ def extract_tag_transforms(
 
     whitelist: Optional[Set[str]] = None if families is None else {str(f) for f in families}
 
-    root = ET.parse(str(urdf_path)).getroot()
+    # Build the fixed-joint parent map once; reuse it for every tag walk.
+    parent_of = _build_fixed_joint_parent_map(urdf_path)
+
     result: Dict[Tuple[str, int], TagTransform] = {}
-    for joint in root.findall("joint"):
-        if joint.get("type", "").lower() != "fixed":
-            continue
-        child_el = joint.find("child")
-        if child_el is None:
-            continue
-        child = child_el.get("link", "")
+    for child in parent_of:
         parsed = _parse_tag_link(child, prefix)
         if parsed is None:
             continue
         family, tag_id = parsed
         if whitelist is not None and family not in whitelist:
             continue
-        T = _origin_to_homogeneous(joint.find("origin"))
+        try:
+            T = _compose_fixed_chain(parent_of, child, base, urdf_path)
+        except ValueError:
+            # Tag is not reachable from base via fixed joints; skip.
+            continue
         key = (family, tag_id)
         if key in result:
             first = result[key].child_link
@@ -256,50 +331,6 @@ def link_transform_from_base(
         raise ValueError(
             f"Link '{link_name}' not in URDF {urdf_path}"
         )
-    if link_name == base:
-        return np.eye(4)
 
-    # Build child -> (parent, T_parent_to_child) for every fixed joint.
-    root = ET.parse(str(urdf_path)).getroot()
-    parent_of: Dict[str, Tuple[str, np.ndarray]] = {}
-    joint_types: Dict[str, str] = {}
-    for joint in root.findall("joint"):
-        parent_el = joint.find("parent")
-        child_el = joint.find("child")
-        if parent_el is None or child_el is None:
-            continue
-        parent = parent_el.get("link", "")
-        child = child_el.get("link", "")
-        if not parent or not child:
-            continue
-        joint_types[child] = joint.get("type", "").lower()
-        if joint_types[child] != "fixed":
-            continue
-        parent_of[child] = (parent, _origin_to_homogeneous(joint.find("origin")))
-
-    # Walk up to base, composing parent_to_child transforms.
-    T = np.eye(4)
-    visited: Set[str] = set()
-    cur = link_name
-    while cur != base:
-        visited.add(cur)
-        if cur not in parent_of:
-            raise ValueError(
-                f"Link '{link_name}' has no fixed-joint chain to base "
-                f"'{base}' in {urdf_path} (stuck at '{cur}')"
-            )
-        parent, T_parent_to_child = parent_of[cur]
-        if cur in joint_types and joint_types[cur] != "fixed":
-            raise ValueError(
-                f"Link '{link_name}' is connected to '{parent}' via a "
-                f"non-fixed joint (type={joint_types[cur]!r}); only fixed "
-                f"chains are supported"
-            )
-        T = T_parent_to_child @ T
-        if parent in visited:
-            raise ValueError(
-                f"Cycle detected in URDF chain from '{link_name}' to "
-                f"'{base}' via '{parent}'"
-            )
-        cur = parent
-    return T
+    parent_of = _build_fixed_joint_parent_map(urdf_path)
+    return _compose_fixed_chain(parent_of, link_name, base, urdf_path)

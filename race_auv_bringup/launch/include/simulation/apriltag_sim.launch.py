@@ -1,17 +1,22 @@
 """Launch the full AprilTag pipeline from a single YAML file.
 
-Reads ``config/apriltag.yaml`` and starts:
+Reads ``config/simulation/apriltag.yaml`` (in race_auv_bringup) and starts:
 
-* One ``apriltag_detector_node`` per enabled camera in ``cameras:``.
-* One ``apriltag_fuser_node`` if ``fuser.enabled`` is true.
+* One ``race_auv_camera_pkg/apriltag_detector_node`` per enabled camera in ``cameras:``.
+* One ``race_auv_camera_pkg/apriltag_fuser_node`` if ``fuser.enabled`` is true.
 
 The bringup launch file only needs to include this launch file with no
 arguments; all per-camera topics, namespaces, intrinsics, and fuser settings
 are read from the YAML.
+
+The detector publishes per-tag ``vision_msgs/Detection3DArray`` topics
+plus annotated images; the fuser fuses those into a single ``dock_point``
+TF for downstream docking control.
 """
 
+import json
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import yaml
 from ament_index_python.packages import get_package_share_directory
@@ -74,6 +79,16 @@ def _build_nodes(context, *args, **kwargs):
 
         intrinsics = cam.get("intrinsics", {}) or {}
 
+        # Per-camera tag override: if the camera entry has its own `tags:`
+        # list, JSON-encode it as `tags_override` so the detector builds only
+        # the (family, size) groups it can actually see. Otherwise the global
+        # YAML `tags:` list (in `apriltag.tags`) is used as a fallback.
+        cam_tags = cam.get("tags", None)
+        if cam_tags is None:
+            tags_override_json = "[]"
+        else:
+            tags_override_json = json.dumps(list(cam_tags))
+
         actions.append(
             Node(
                 package="race_auv_camera_pkg",
@@ -91,6 +106,7 @@ def _build_nodes(context, *args, **kwargs):
                     "output_image_topic": output_image_topic,
                     "output_detections_topic": output_detections_topic,
                     "publish_rate": publish_rate,
+                    "tags_override": tags_override_json,
                     "intrinsics.fx": float(intrinsics.get("fx", 0.0)),
                     "intrinsics.fy": float(intrinsics.get("fy", 0.0)),
                     "intrinsics.cx": float(intrinsics.get("cx", 0.0)),
@@ -109,7 +125,7 @@ def _build_nodes(context, *args, **kwargs):
     if fuser_cfg.get("enabled", True):
         actions.append(
             Node(
-                package="race_auv_sim_pkg",
+                package="race_auv_camera_pkg",
                 executable="apriltag_fuser_node",
                 name="apriltag_fuser",
                 output="screen",
@@ -135,8 +151,10 @@ def _build_nodes(context, *args, **kwargs):
 
 
 def generate_launch_description() -> LaunchDescription:
-    pkg_share = get_package_share_directory("race_auv_sim_pkg")
-    default_config = os.path.join(pkg_share, "config", "apriltag.yaml")
+    pkg_share = get_package_share_directory("race_auv_bringup")
+    default_config = os.path.join(
+        pkg_share, "config", "simulation", "apriltag.yaml"
+    )
 
     config_arg = DeclareLaunchArgument(
         "config",

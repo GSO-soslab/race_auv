@@ -1,7 +1,7 @@
 """Multi-camera AprilTag fuser.
 
 Subscribes to one or more ``vision_msgs/Detection3DArray`` topics published
-by the per-camera ``stonefish_apriltag_node`` instances, loads the same URDF
+by the per-camera ``apriltag_detector_node`` instances, loads the same URDF
 the detectors used (so it knows ``T_base_to_tag`` for every tag id), and on
 each tick runs a single joint Umeyama / SVD SE(3) solve over **all** tags
 seen by **all** cameras. The result is published as a single TF:
@@ -60,8 +60,6 @@ def _pose_to_matrix(pose) -> np.ndarray:
     """geometry_msgs/Pose -> 4x4 homogeneous transform."""
     q = pose.orientation
     p = pose.position
-    # scipy takes xyzw
-    from scipy.spatial.transform import Rotation as R
     Rm = R.from_quat([q.x, q.y, q.z, q.w]).as_matrix()
     T = np.eye(4)
     T[:3, :3] = Rm
@@ -480,7 +478,6 @@ class AprilTagFuserNode(Node):
 
 def _tf_to_matrix(tf_stamped: TransformStamped) -> np.ndarray:
     """geometry_msgs/TransformStamped -> 4x4 homogeneous transform."""
-    from scipy.spatial.transform import Rotation as R
     t = tf_stamped.transform.translation
     q = tf_stamped.transform.rotation
     T = np.eye(4)

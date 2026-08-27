@@ -1,0 +1,140 @@
+# AprilTag pipeline configuration for simulation.
+#
+# Single source of truth for the per-camera detectors and the multi-camera
+# fuser. `launch/include/simulation/apriltag_sim.launch.py` reads this file;
+# the sim bringup just includes that launch file with no arguments.
+#
+# To add or remove cameras, edit the `cameras:` list. The simulation uses
+# Stonefish synthetic cameras with topic names different from the real
+# DWE Stellar cameras (real-hardware config lives one level up at
+# `race_auv_bringup/config/apriltag.yaml`).
+#
+# Stonefish publishes both the image topic and a matching CameraInfo on the
+# `info_topic`, so the per-camera `intrinsics:` block below is only used as
+# a fallback if CameraInfo messages stop arriving.
+
+apriltag:
+  # URDF that describes the tag layout in the object's base frame.
+  object:
+    urdf_package:   "race_station_description"
+    urdf_filename:  "urdf/base.urdf"
+    base_link_name: ""              # empty -> URDF root link (base_link)
+    tag_link_prefix: "apriltag"
+    # URDF link whose pose (in the object's base frame) is composed onto
+    # the solved T_ref_to_base. The fuser publishes the TF
+    # <reference_frame> -> <output_frame>, where <output_frame> is the
+    # dock frame the rest of the stack uses.
+    dock_link_name: "dock_point"
+
+  # Shared detector tuning.
+  detector_defaults:
+    nthreads:          2
+    quad_decimate:     1.0
+    quad_sigma:        0.0
+    refine_edges:      true
+    decode_sharpening: 0.25
+    publish_rate:      5.0
+
+  # Tag family / id / physical size.
+  #
+  # IDs are per-family (each family numbers its own tags 0..N) and the
+  # detector + URDF use family-prefixed link names (e.g. apriltag25h9_02,
+  # apriltag36h11_541) so two tags in different families can share the
+  # same numeric id without colliding.
+  #
+  # Sizes MUST match the tag dimensions in the station URDF and SCN
+  # (world_of_stonefish/vehicles/race_station.scn). Current groups:
+  #   - tag25h9   @ 27 cm   (3 IDs) -- the large front/port/starboard tags
+  #   - tag36h11  @ 15 cm   (3 IDs) -- the medium port/starboard/top tags
+  #   - tag36h11  @ 5 cm    (2 IDs) -- the small upper/lower tags on top
+  tags:
+    # 3 x tag25h9 @ 27cm
+    - { id: 2,  family: "tag25h9",  size: 0.27 }
+    - { id: 13, family: "tag25h9",  size: 0.27 }
+    - { id: 17, family: "tag25h9",  size: 0.27 }
+    # 3 x tag36h11 @ 15cm
+    - { id: 146, family: "tag36h11", size: 0.15 }
+    - { id: 176, family: "tag36h11", size: 0.15 }
+    - { id: 185, family: "tag36h11", size: 0.15 }
+    # 2 x tag36h11 @ 5cm
+    - { id: 541, family: "tag36h11", size: 0.05 }
+    - { id: 558, family: "tag36h11", size: 0.05 }
+
+  # One entry per physical camera. Add / remove / enable cameras here.
+  cameras:
+    - name: "cam_front"
+      enabled: true
+      namespace: "cam_front"
+      # Stonefish publishes only the raw image_transport for `camera`
+      # sensors at <topic>/image_color -- it does NOT publish a
+      # compressed variant. (See ROS2ScenarioParser.cpp:
+      #   img_pubs[sensorName] = it->advertise(topicStr + "/image_color", ...);
+      # A compressed subscriber only appears if a republish node relays it.)
+      image_transport: "raw"
+      image_topic: "/race_auv/cam_front/stonefish/data/image_color"
+      info_topic:  "/race_auv/cam_front/stonefish/data/camera_info"
+      # Stonefish publishes CameraInfo with the bare sensor name ("cam1") but
+      # the URDF robot_state_publisher uses the robot prefix ("race_auv/cam1").
+      # Force the detector to tag detections with the URDF frame so the fuser
+      # can look up race_auv/base_link -> camera.
+      camera_frame: "race_auv/cam_front"
+      output_image_topic: "apriltag_detection/image"
+      output_detections_topic: "apriltag_detection/detections3d"
+      jpeg_quality: 90          # Foxglove / topside bandwidth vs. detail
+      # # Intrinsics fallback (used only when CameraInfo is absent).
+      # intrinsics:
+      #   fx: 953.919689
+      #   fy: 954.022011
+      #   cx: 818.210277
+      #   cy: 665.849871
+      #   width: 1600
+      #   height: 1200
+      #   distortion: [-0.064599, -0.002388, 0.001767, 0.000415]
+      #   fisheye: true
+      
+
+    - name: "cam_down"
+      enabled: true
+      namespace: "cam_down"
+      image_transport: "raw"
+      image_topic: "/race_auv/cam_down/stonefish/data/image_color"
+      info_topic:  "/race_auv/cam_down/stonefish/data/camera_info"
+      camera_frame: "race_auv/cam_down"
+      output_image_topic: "apriltag_detection/image"
+      output_detections_topic: "apriltag_detection/detections3d"
+      # cam_down only ever sees the two flat medium tags (port and starboard
+      # apriltag_medium_1 / apriltag_medium_2 in the station SCN). Restricting
+      # the detector to this single (family, size) group means exactly one
+      # pupil_apriltags Detector instance is built and only these two IDs are
+      # accepted, instead of all 8 tags from the global `tags:` list.
+      tags:
+        - { id: 176, family: "tag36h11", size: 0.15 }
+        - { id: 185, family: "tag36h11", size: 0.15 }
+      jpeg_quality: 90          # Foxglove / topside bandwidth vs. detail
+      # intrinsics:
+      #   fx: 953.919689
+      #   fy: 954.022011
+      #   cx: 818.210277
+      #   cy: 665.849871
+      #   width: 1600
+      #   height: 1200
+      #   distortion: [-0.064599, -0.002388, 0.001767, 0.000415]
+      #   fisheye: true
+
+  # Multi-camera fuser. Owns the single fused dock-point TF and a matching
+  # PoseStamped topic. The published frame is the URDF link named by
+  # object.dock_link_name (here "dock_point"); T_ref_to_dock is computed
+  # by composing the solved T_ref_to_base with the URDF's T_base_to_dock.
+  fuser:
+    enabled: true
+    reference_frame: "race_auv/base_link"
+    # Published TF: race_auv/base_link -> race_station/dock_point.
+    # The leading "race_station/" prefix distinguishes the station's dock
+    # frame from the AUV's own (race_auv/dock_point-style) frames; the
+    # underlying URDF link name (object.dock_link_name) stays as "dock_point".
+    output_frame:    "race_station/dock_point"
+    output_pose_topic: "race_station/dock_point/pose"   # "" to disable
+    publish_rate:    5.0
+    min_pairs:       1
+    detection_max_age: 0.5
+    tf_timeout:      0.1

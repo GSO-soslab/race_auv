@@ -16,7 +16,6 @@ def generate_launch_description():
     arg_robot_name = 'race_auv'
     robot_bringup = arg_robot_name + '_bringup'
     robot_description = arg_robot_name + '_description'
-    sim_tagdet_bringup = arg_robot_name + '_sim_pkg'
     arg_station_name = 'race_station'
     station_bringup = arg_station_name + '_bringup'
 
@@ -70,21 +69,24 @@ def generate_launch_description():
 
     # apriltag pipeline (per-camera detectors + multi-camera fuser).
     # All topics, namespaces, and intrinsics live in
-    # race_auv_sim_pkg/config/apriltag.yaml; no arguments needed.
+    # race_auv_bringup/config/simulation/apriltag.yaml; no arguments needed.
     apriltag_pipeline = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
-            os.path.join(get_package_share_directory(sim_tagdet_bringup),
-                         'launch', 'apriltag.launch.py')
+            os.path.join(get_package_share_directory(robot_bringup),
+                         'launch', 'include', 'simulation',
+                         'apriltag_sim.launch.py')
         ]),
     )
 
     # ground-truth docking-station pose in auv base_link
-    ground_truth_pose = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource([
-            os.path.join(get_package_share_directory(sim_tagdet_bringup),
-                         'launch', 'ground_truth_pose.launch.py')
-        ]),
-    )
+    # (still provided by race_auv_sim_pkg/launch/ground_truth_pose.launch.py;
+    # uncomment if you want it in the bringup)
+    # ground_truth_pose = IncludeLaunchDescription(
+    #     PythonLaunchDescriptionSource([
+    #         os.path.join(get_package_share_directory('race_auv_sim_pkg'),
+    #                      'launch', 'ground_truth_pose.launch.py')
+    #     ]),
+    # )
 
     # race station bringup
     station_simulation = IncludeLaunchDescription(
@@ -113,5 +115,5 @@ def generate_launch_description():
         apriltag_pipeline,
         # ground_truth_pose,
         # station_simulation
-        rviz
+        # rviz
     ])
