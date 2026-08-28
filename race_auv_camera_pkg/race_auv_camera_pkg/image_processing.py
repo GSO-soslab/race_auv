@@ -1,25 +1,32 @@
-"""Image rectification for the AprilTag pipeline.
+"""CPU image rectification for the AprilTag pipeline.
 
-Two backend classes share the same API:
+This module provides a single ``ImageRectifier`` class that:
 
-* ``ImageRectifier`` -- CPU. Builds pre-computed OpenCV remap maps once
-  and rectifies every frame with ``cv2.remap``. Universally available.
-* ``CUDAImageRectifier`` -- GPU via ``cv2.cuda``. Uploads the remap
-  maps once and runs ``cv2.cuda.remap`` per frame. Used when the
-  ``apriltag.yaml`` ``detector_defaults.use_cuda`` is true and a
-  CUDA-enabled OpenCV is present. Falls back to ``ImageRectifier`` if
-  construction fails.
+1. Builds pre-computed OpenCV remap maps once at construction time.
+2. Rectifies every incoming frame via ``cv2.remap`` (CPU) and ROI-crops
+   it to the largest rectangle of valid (non-black) pixels.
+3. Exposes the rectified image's intrinsics (``fx``, ``fy``, ``cx``,
+   ``cy``) and size, with zero distortion coefficients by construction.
 
-Both produce:
+GPU acceleration via ``cv2.cuda`` was removed because OpenCV's CUDA
+support is not reliably available on the platforms this package is
+deployed on (Jetson Orin, generic Linux, the CI runners): the
+``opencv-python`` PyPI wheels do not include CUDA, and the JetPack
+``python3-opencv`` system package either ships without NVCOMPRESS or
+without CUDA runtime libraries in the configuration we use. The
+``cv2.cuda`` modules therefore either raise ``AttributeError`` at import
+time or fail at first use with "no CUDA-enabled devices". A failed
+GPU path wastes CPU time on fallbacks and complicates the operator's
+mental model, so it was removed entirely; everything runs on the CPU.
 
-* the rectified, ROI-cropped BGR image (numpy array, CPU),
-* the rectified image's intrinsics (fx, fy, cx, cy) and size,
-* zero distortion coefficients (a rectified image is, by construction,
-  distortion-free).
+Public API
+----------
 
-The Jetson / Orin build of OpenCV exposes ``cv2.cuda`` and the
-``cv2.cuda.remap`` / ``cv2.cuda.cvtColor`` primitives that make this
-backend ~3-5x faster than the CPU path on 1600x1200 frames.
+* :class:`ImageRectifier` -- the CPU rectifier (see its docstring).
+* :class:`RectifiedIntrinsics` -- dict subclass returned by
+  :meth:`ImageRectifier.get_intrinsics`.
+* :func:`build_rectifier` -- thin factory used by the detector node;
+  always returns the CPU backend.
 """
 
 from __future__ import annotations
@@ -34,12 +41,20 @@ import numpy as np
 _logger = logging.getLogger(__name__)
 
 
-# --- Public type returned by both rectifiers ------------------------------------
+# =============================================================================
+# Public type returned by the rectifier
+# =============================================================================
 class RectifiedIntrinsics(dict):
-    """Plain dict subclass so callers can treat the result like a dict.
+    """Plain ``dict`` subclass carrying the rectified image's intrinsics.
 
-    Keys: ``fx``, ``fy``, ``cx``, ``cy``, ``img_width``, ``img_height``,
-    ``distortion`` (always an array of zeros).
+    Keys:
+
+    * ``fx``, ``fy`` -- focal lengths (pixels) for the rectified image.
+    * ``cx``, ``cy`` -- principal point (pixels) for the rectified image.
+    * ``img_width``, ``img_height`` -- size of the rectified image in
+      pixels.
+    * ``distortion`` -- always a length-5 array of zeros (a rectified
+      image is, by construction, distortion-free).
     """
 
 
@@ -49,27 +64,38 @@ class RectifiedIntrinsics(dict):
 class ImageRectifier:
     """CPU image rectifier.
 
-    Pre-computes remap maps for either the fisheye or standard
+    Pre-computes remap maps for either the fisheye or the standard
     (plumb-bob) distortion model and exposes ``rectify(image)`` that
-    undistorts and ROI-crops an image in one call.
+    undistorts and ROI-crops an image in a single call.
+
+    The CPU path uses OpenCV's ``cv2.remap`` (or ``cv2.undistort`` for
+    the plumb-bob model), both of which are pure CPU operations. On a
+    1600x1200 frame at 5 Hz this is ~10-15 ms / frame on a desktop and
+    similar on a Jetson Orin -- acceptable for a single-camera AprilTag
+    pipeline.
 
     Parameters
     ----------
     logger
         Logger used for init messages.
     camera_matrix
-        3x3 intrinsic matrix K.
+        ``3x3`` intrinsic matrix ``K`` for the *original* (distorted)
+        image.
     dist_coeffs
-        1D distortion coefficients (4 for fisheye, 5 for plumb-bob).
+        1-D distortion coefficients. Four for the fisheye model
+        ``(k1, k2, k3, k4)`` and typically five for the standard
+        plumb-bob model ``(k1, k2, p1, p2, k3)``.
     image_size
         ``(width, height)`` of the *original* (distorted) image.
     is_fisheye
         ``True`` for the fisheye model (``cv2.fisheye.*``),
-        ``False`` for the standard plumb-bob model (``cv2.undistort``).
+        ``False`` for the standard plumb-bob model
+        (``cv2.undistort`` / ``cv2.getOptimalNewCameraMatrix``).
     crop_to_valid_pixels
-        ``True`` to crop to the largest bounding rectangle of valid
-        (non-black) pixels, removing the borders introduced by
-        rectification.
+        ``True`` to crop the rectified image to the largest bounding
+        rectangle of valid (non-black) pixels, removing the borders
+        introduced by rectification. ``False`` to keep the full
+        rectified frame (introduces black borders).
     """
 
     def __init__(
@@ -81,12 +107,17 @@ class ImageRectifier:
         is_fisheye: bool,
         crop_to_valid_pixels: bool,
     ) -> None:
+        # ------------------------------------------------------------------ state
         self._logger = logger
         self._camera_matrix = camera_matrix
         self._dist_coeffs = dist_coeffs
         self._image_size = image_size
         self._is_fisheye = bool(is_fisheye)
         self._crop = bool(crop_to_valid_pixels)
+        # The two remap maps are populated by ``_init_fisheye`` /
+        # ``_init_standard`` below. They are ``np.float32`` arrays of
+        # shape ``(H, W)`` (one entry per output pixel giving the
+        # source pixel to read from).
         self.map1: Optional[np.ndarray] = None
         self.map2: Optional[np.ndarray] = None
 
@@ -95,12 +126,14 @@ class ImageRectifier:
             f"crop={self._crop} size={self._image_size[0]}x{self._image_size[1]}"
         )
 
+        # ------------------------------------------------------------------ build
         if self._is_fisheye:
             self._init_fisheye()
         else:
             self._init_standard()
 
-        # ROI -> final image dims + adjusted principal point.
+        # After ROI cropping the principal point shifts by ``(roi.x, roi.y)``
+        # and the image size shrinks to ``(roi.w, roi.h)``.
         self._new_width = self.roi[2]
         self._new_height = self.roi[3]
         self._final_camera_matrix = self.new_camera_matrix.copy()
@@ -115,7 +148,14 @@ class ImageRectifier:
             f"cy={self._final_camera_matrix[1, 2]:.2f}"
         )
 
+    # ------------------------------------------------------------------ init helpers
     def _init_fisheye(self) -> None:
+        """Build the remap maps for the fisheye model.
+
+        The fisheye API expects exactly 4 coefficients ``(k1, k2, k3, k4)``.
+        If more are passed in (some camera drivers emit 8) we use the
+        first four and warn about the rest.
+        """
         d = np.asarray(self._dist_coeffs, dtype=np.float64).ravel()[:4]
         if d.size != 4:
             raise ValueError(
@@ -125,11 +165,12 @@ class ImageRectifier:
         if self._dist_coeffs.size > 4:
             self._logger.warn(
                 f"Fisheye model received {self._dist_coeffs.size} distortion "
-                "coefficients; using the first 4 (k1, k2, k3, k4) and ignoring "
-                "the rest."
+                "coefficients; using the first 4 (k1, k2, k3, k4) and "
+                "ignoring the rest."
             )
 
-        # balance=0.0 crops to valid pixels, balance=1.0 shows all pixels.
+        # ``balance=0.0`` crops to valid pixels; ``balance=1.0`` keeps
+        # all pixels (with black borders).
         balance = 0.0 if self._crop else 1.0
         self.new_camera_matrix = cv2.fisheye.estimateNewCameraMatrixForUndistortRectify(
             self._camera_matrix, d, self._image_size, np.eye(3), balance=balance,
@@ -139,9 +180,14 @@ class ImageRectifier:
             self._image_size, cv2.CV_32F,
         )
 
+        # ROI: find the largest contour of valid pixels in an
+        # all-ones mask after the same remap; its bounding rect is
+        # the crop we want.
         if self._crop:
-            mask = np.ones(self._image_size[::-1], dtype=np.uint8) * 255  # H, W
-            undistorted_mask = cv2.remap(mask, self.map1, self.map2, interpolation=cv2.INTER_LINEAR)
+            mask = np.ones(self._image_size[::-1], dtype=np.uint8) * 255  # (H, W)
+            undistorted_mask = cv2.remap(
+                mask, self.map1, self.map2, interpolation=cv2.INTER_LINEAR,
+            )
             contours, _ = cv2.findContours(
                 undistorted_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE,
             )
@@ -157,6 +203,12 @@ class ImageRectifier:
             self.roi = (0, 0, self._image_size[0], self._image_size[1])
 
     def _init_standard(self) -> None:
+        """Build the rectified camera matrix + ROI for the plumb-bob model.
+
+        ``cv2.getOptimalNewCameraMatrix`` returns both at once: with
+        ``alpha=0.0`` it crops to valid pixels, with ``alpha=1.0`` it
+        keeps all pixels.
+        """
         if len(self._dist_coeffs) < 4:
             self._logger.warn(
                 f"Standard model with only {len(self._dist_coeffs)} distortion "
@@ -164,13 +216,23 @@ class ImageRectifier:
             )
         alpha = 0.0 if self._crop else 1.0
         self.new_camera_matrix, self.roi = cv2.getOptimalNewCameraMatrix(
-            self._camera_matrix, self._dist_coeffs, self._image_size, alpha, self._image_size,
+            self._camera_matrix, self._dist_coeffs, self._image_size,
+            alpha, self._image_size,
         )
 
+    # ------------------------------------------------------------------ public API
     def rectify(self, image: np.ndarray) -> np.ndarray:
-        """Rectify and ROI-crop ``image``. Returns a new BGR array."""
+        """Rectify and ROI-crop ``image``. Returns a new BGR array.
+
+        The CPU ``cv2.remap`` call below reads from ``self.map1`` /
+        ``self.map2`` and writes into a freshly allocated BGR buffer of
+        size ``(self._new_width, self._new_height)``.
+        """
         if self._is_fisheye:
-            rect_img = cv2.remap(image, self.map1, self.map2, interpolation=cv2.INTER_LINEAR)
+            rect_img = cv2.remap(
+                image, self.map1, self.map2,
+                interpolation=cv2.INTER_LINEAR,
+            )
         else:
             rect_img = cv2.undistort(
                 image, self._camera_matrix, self._dist_coeffs,
@@ -180,115 +242,12 @@ class ImageRectifier:
         return rect_img[y:y + h, x:x + w]
 
     def get_intrinsics(self) -> RectifiedIntrinsics:
-        """Intrinsics for the rectified (and ROI-cropped) image."""
-        return RectifiedIntrinsics(
-            fx=float(self._final_camera_matrix[0, 0]),
-            fy=float(self._final_camera_matrix[1, 1]),
-            cx=float(self._final_camera_matrix[0, 2]),
-            cy=float(self._final_camera_matrix[1, 2]),
-            img_width=int(self._new_width),
-            img_height=int(self._new_height),
-            distortion=np.zeros(5, dtype=np.float32),
-        )
+        """Return the rectified (and ROI-cropped) image's intrinsics.
 
-
-# =============================================================================
-# CUDA backend
-# =============================================================================
-class CUDAImageRectifier:
-    """GPU image rectifier using ``cv2.cuda``.
-
-    Mirrors the CPU ``ImageRectifier`` API so callers can swap between
-    them. Per-frame cost on Jetson Orin (~2-4 ms for 1600x1200) is
-    dominated by the GPU remap; BGR->gray is done on the GPU too if
-    ``rectify_bgr_gray`` is used.
-
-    Construction will raise ``RuntimeError`` if CUDA is not available;
-    callers should treat that as a signal to fall back to ``ImageRectifier``.
-    """
-
-    def __init__(
-        self,
-        logger,
-        camera_matrix: np.ndarray,
-        dist_coeffs: np.ndarray,
-        image_size: Tuple[int, int],
-        is_fisheye: bool,
-        crop_to_valid_pixels: bool,
-    ) -> None:
-        if cv2.cuda.getCudaEnabledDeviceCount() <= 0:
-            raise RuntimeError("cv2.cuda reports no CUDA-enabled devices.")
-
-        self._logger = logger
-        self._image_size = image_size
-        self._is_fisheye = bool(is_fisheye)
-        self._crop = bool(crop_to_valid_pixels)
-
-        # Build the CPU remap maps first using the same logic as the CPU
-        # backend, then upload them to the GPU.
-        cpu = ImageRectifier(
-            logger=logger,
-            camera_matrix=camera_matrix,
-            dist_coeffs=dist_coeffs,
-            image_size=image_size,
-            is_fisheye=is_fisheye,
-            crop_to_valid_pixels=crop_to_valid_pixels,
-        )
-        self._roi = cpu.roi
-        self._new_width = cpu._new_width
-        self._new_height = cpu._new_height
-        self._final_camera_matrix = cpu._final_camera_matrix
-        self._gpu_map1 = cv2.cuda_GpuMat()
-        self._gpu_map2 = cv2.cuda_GpuMat()
-        self._gpu_map1.upload(cpu.map1)
-        self._gpu_map2.upload(cpu.map2)
-        self._stream = cv2.cuda_Stream()
-
-        self._logger.info(
-            f"ImageRectifier init: backend=cuda fisheye={self._is_fisheye} "
-            f"crop={self._crop} size={self._image_size[0]}x{self._image_size[1]}"
-        )
-        self._logger.info(
-            f"Rectifier ready: {self._new_width}x{self._new_height} "
-            f"fx={self._final_camera_matrix[0, 0]:.2f} "
-            f"fy={self._final_camera_matrix[1, 1]:.2f} "
-            f"cx={self._final_camera_matrix[0, 2]:.2f} "
-            f"cy={self._final_camera_matrix[1, 2]:.2f}"
-        )
-
-    # --------------------------------------------------------------------- API
-    def rectify(self, image: np.ndarray) -> np.ndarray:
-        """Rectify ``image`` on the GPU and download the BGR result."""
-        gpu_in = cv2.cuda_GpuMat()
-        gpu_in.upload(image, self._stream)
-        gpu_rect = cv2.cuda.remap(
-            gpu_in, self._gpu_map1, self._gpu_map2,
-            interpolation=cv2.INTER_LINEAR, stream=self._stream,
-        )
-        rect_img = gpu_rect.download()
-        x, y, w, h = self._roi
-        return rect_img[y:y + h, x:x + w]
-
-    def rectify_bgr_and_gray(self, image: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-        """Rectify ``image`` on the GPU and return ``(bgr, gray)`` on the CPU.
-
-        The grayscale is produced on the GPU by ``cv2.cuda.cvtColor``
-        before download, saving one CPU pass through the rectified BGR.
+        The principal point has already been shifted by the ROI origin,
+        so a downstream caller can use ``fx``, ``fy``, ``cx``, ``cy``
+        directly on the rectified image with no extra transform.
         """
-        gpu_in = cv2.cuda_GpuMat()
-        gpu_in.upload(image, self._stream)
-        gpu_rect = cv2.cuda.remap(
-            gpu_in, self._gpu_map1, self._gpu_map2,
-            interpolation=cv2.INTER_LINEAR, stream=self._stream,
-        )
-        gpu_gray = cv2.cuda.cvtColor(gpu_rect, cv2.COLOR_BGR2GRAY, stream=self._stream)
-        bgr = gpu_rect.download()
-        gray = gpu_gray.download()
-        x, y, w, h = self._roi
-        return bgr[y:y + h, x:x + w], gray[y:y + h, x:x + w]
-
-    def get_intrinsics(self) -> RectifiedIntrinsics:
-        """Intrinsics for the rectified (and ROI-cropped) image."""
         return RectifiedIntrinsics(
             fx=float(self._final_camera_matrix[0, 0]),
             fy=float(self._final_camera_matrix[1, 1]),
@@ -303,30 +262,6 @@ class CUDAImageRectifier:
 # =============================================================================
 # Selection helper
 # =============================================================================
-
-# Map a CUDAImageRectifier constructor failure message to a one-line
-# actionable hint. Surfaced when ``use_cuda: true`` was requested but
-# the GPU path didn't engage -- the operator shouldn't have to grep the
-# OpenCV docs to figure out what's wrong.
-_CUDA_RECTIFIER_HINTS = (
-    ("no CUDA-enabled devices",
-     "hint: pip's opencv-python has no CUDA support. Uninstall it and "
-     "install NVIDIA's JetPack system opencv: "
-     "`pip uninstall -y opencv-python opencv-contrib-python && "
-     "sudo apt install python3-opencv`."),
-    ("libcuda", "hint: libcuda.so not found -- check CUDA toolkit install."),
-)
-
-
-def _cuda_rectifier_hint(exc: Exception) -> str:
-    """Best-effort actionable hint for a CUDA rectifier init failure."""
-    msg = str(exc).lower()
-    for needle, hint in _CUDA_RECTIFIER_HINTS:
-        if needle.lower() in msg:
-            return hint
-    return ""
-
-
 def build_rectifier(
     logger,
     camera_matrix: np.ndarray,
@@ -334,30 +269,23 @@ def build_rectifier(
     image_size: Tuple[int, int],
     is_fisheye: bool,
     crop_to_valid_pixels: bool,
-    use_cuda: bool,
-) -> Tuple[object, str]:
-    """Build a rectifier using CUDA when ``use_cuda`` is true.
+) -> Tuple[ImageRectifier, str]:
+    """Build an :class:`ImageRectifier` (always CPU).
 
-    Returns ``(rectifier, backend_name)`` where ``backend_name`` is one
-    of ``"cuda"`` or ``"cpu"``. The detector logs this at startup so
-    operators can confirm HW acceleration is engaged.
+    Parameters
+    ----------
+    logger
+        Logger passed through to the rectifier for init / ready lines.
+    camera_matrix, dist_coeffs, image_size, is_fisheye, crop_to_valid_pixels
+        Forwarded to :class:`ImageRectifier` -- see its docstring.
+
+    Returns
+    -------
+    (rectifier, backend_name)
+        ``backend_name`` is always ``"cpu"``; the second tuple element is
+        kept so callers (and the HW-banner log) have a consistent
+        surface.
     """
-    if use_cuda:
-        try:
-            r = CUDAImageRectifier(
-                logger=logger,
-                camera_matrix=camera_matrix,
-                dist_coeffs=dist_coeffs,
-                image_size=image_size,
-                is_fisheye=is_fisheye,
-                crop_to_valid_pixels=crop_to_valid_pixels,
-            )
-            return r, "cuda"
-        except Exception as e:
-            hint = _cuda_rectifier_hint(e)
-            logger.warn(f"CUDA rectifier unavailable ({e!r}); falling back to CPU.")
-            if hint:
-                logger.warn(hint)
     r = ImageRectifier(
         logger=logger,
         camera_matrix=camera_matrix,

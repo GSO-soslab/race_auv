@@ -66,7 +66,6 @@ def _build_nodes(context, *args, **kwargs):
         image_transport = str(cam.get("image_transport", "raw")).lower()
         info_topic = cam.get("info_topic", "") or ""
         camera_frame = cam.get("camera_frame", "") or ""
-        tag_frame_prefix = cam.get("tag_frame_prefix", "apriltag")
         output_image_topic = cam.get(
             "output_image_topic", "apriltag_detection/image"
         )
@@ -76,6 +75,8 @@ def _build_nodes(context, *args, **kwargs):
         publish_rate = float(
             cam.get("publish_rate", detector_defaults.get("publish_rate", 5.0))
         )
+        process_scale = float(cam.get("process_scale", 1.0))
+        jpeg_quality = int(cam.get("jpeg_quality", 80))
 
         intrinsics = cam.get("intrinsics", {}) or {}
 
@@ -102,10 +103,11 @@ def _build_nodes(context, *args, **kwargs):
                     "image_topic": image_topic,
                     "info_topic": info_topic,
                     "camera_frame": camera_frame,
-                    "tag_frame_prefix": tag_frame_prefix,
                     "output_image_topic": output_image_topic,
                     "output_detections_topic": output_detections_topic,
                     "publish_rate": publish_rate,
+                    "process_scale": process_scale,
+                    "jpeg_quality": jpeg_quality,
                     "tags_override": tags_override_json,
                     "intrinsics.fx": float(intrinsics.get("fx", 0.0)),
                     "intrinsics.fy": float(intrinsics.get("fy", 0.0)),

@@ -31,7 +31,6 @@ detection from a camera that has since moved.
 from __future__ import annotations
 
 import threading
-import time
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -52,6 +51,7 @@ from .apriltag_geom import (
     resolve_urdf_path,
     sanitize_rotation,
     solve_cam_to_base,
+    solve_cam_to_base_ransac,
 )
 from .urdf_tag_parser import TagTransform, extract_tag_transforms, link_transform_from_base
 
@@ -186,11 +186,15 @@ class AprilTagFuserNode(Node):
         else:
             self.get_logger().info("PoseStamped mirror disabled (output_pose_topic empty).")
 
-        # --- Detection cache: (source_topic, family, tag_id) -> (stamp_sec, frame, T_cam_to_tag) ---
+        # --- Detection cache: (source_topic, family, tag_id) -> (stamp_ns, frame, T_cam_to_tag) ---
         # tag_id is per-family; the (family, tag_id) tuple uniquely
         # identifies a tag across all configured families and sizes.
+        # ``stamp_ns`` is the message header time in nanoseconds (ROS
+        # time, not wall-clock) so the freshness check in ``_tick``
+        # stays correct when ``use_sim_time`` is on or when wall-clock
+        # drifts from ROS time (rosbag replay, paused time).
         self._lock = threading.Lock()
-        self._latest: Dict[Tuple[str, str, int], Tuple[float, str, np.ndarray]] = {}
+        self._latest: Dict[Tuple[str, str, int], Tuple[int, str, np.ndarray]] = {}
 
         # --- Subscriptions (one per detection topic) ---
         qos = QoSProfile(
@@ -313,8 +317,14 @@ class AprilTagFuserNode(Node):
     def _make_detection_cb(self, topic: str):
         def cb(msg: Detection3DArray) -> None:
             stamp = msg.header.stamp
-            # Convert builtin_interfaces/Time to float seconds.
-            stamp_sec = float(stamp.sec) + float(stamp.nanosec) * 1e-9
+            # Store the message header time as integer nanoseconds so
+            # the freshness check in ``_tick`` compares like-with-like
+            # (ROS clock vs ROS clock). Previously this was float
+            # seconds against ``time.time()`` -- a wall-clock vs ROS
+            # bug that silently dropped valid detections when
+            # ``use_sim_time`` was on or when wall-clock and ROS clock
+            # diverged (rosbag replay, paused time).
+            stamp_ns = int(stamp.sec) * 1_000_000_000 + int(stamp.nanosec)
             cam_frame = msg.header.frame_id or ""
             for det in msg.detections:
                 parsed = _parse_tag_family_id(det.id)
@@ -335,33 +345,85 @@ class AprilTagFuserNode(Node):
                     continue
                 T[:3, :3] = sanitize_rotation(T[:3, :3])
                 with self._lock:
-                    self._latest[(topic, family, tag_id)] = (stamp_sec, cam_frame, T)
+                    self._latest[(topic, family, tag_id)] = (stamp_ns, cam_frame, T)
         return cb
 
     @staticmethod
+    def _detection_weights(
+        pairs: List[Tuple[np.ndarray, np.ndarray, Tuple[str, int]]],
+    ) -> np.ndarray:
+        """Per-pair weight ``w_i ∝ 1 / d_i^2``, normalized to sum to 1.
+
+        Closer tags have a tighter pose solve (range uncertainty
+        dominates for a fixed physical size), so this proxy captures
+        most of the signal without any protocol change -- the fuser
+        only has the pose, not the pixel area, on the wire.
+
+        A small floor (``d_min = 1e-3``) prevents division-by-zero when
+        a tag is reported at the camera centre, and the resulting
+        weights are normalized so the absolute scale doesn't matter
+        downstream.
+        """
+        d = np.array(
+            [max(1e-3, float(np.linalg.norm(p[0][:3, 3]))) for p in pairs],
+            dtype=np.float64,
+        )
+        w = 1.0 / (d * d)
+        total = float(w.sum())
+        if total <= 0.0 or not np.isfinite(total):
+            # Degenerate input: fall back to uniform weights.
+            return np.ones(len(pairs), dtype=np.float64) / max(1, len(pairs))
+        return w / total
+
+    @staticmethod
     def _fallback_solve(
-        pairs: List[Tuple[np.ndarray, np.ndarray, Tuple[str, int]]]
+        pairs: List[Tuple[np.ndarray, np.ndarray, Tuple[str, int]]],
+        weights: Optional[np.ndarray] = None,
     ) -> Optional[np.ndarray]:
         """Average per-tag T_ref_to_base estimates when joint solve unavailable.
 
         This keeps the fuser producing a pose even when fewer than three tags
         are visible, by inverting each (T_ref_to_tag, T_base_to_tag) pair and
         averaging the resulting transforms.
+
+        Parameters
+        ----------
+        pairs
+            List of ``(T_ref_to_tag, T_base_to_tag, tag_key)`` tuples.
+        weights
+            Optional per-pair weight, shape ``(len(pairs),)``. When
+            provided, both the translation and the (hemisphere-aligned)
+            quaternion averages are weighted. ``None`` means uniform
+            weight -- the original behaviour.
         """
         if not pairs:
             return None
+        n = len(pairs)
+        if weights is None:
+            w = np.full(n, 1.0 / n, dtype=np.float64)
+        else:
+            w = np.asarray(weights, dtype=np.float64).reshape(-1)
+            total = float(w.sum())
+            if total <= 0.0:
+                w = np.full(n, 1.0 / n, dtype=np.float64)
+            else:
+                w = w / total
+
         Ts = [
             T_ref_to_tag @ np.linalg.inv(T_base_to_tag)
             for T_ref_to_tag, T_base_to_tag, _ in pairs
         ]
-        t_avg = np.mean([T[:3, 3] for T in Ts], axis=0)
+        # Weighted translation average.
+        t_avg = np.sum(
+            [wi * T[:3, 3] for wi, T in zip(w, Ts)], axis=0,
+        )
         qs = [R.from_matrix(sanitize_rotation(T[:3, :3])).as_quat() for T in Ts]
         # Keep quaternions in the same hemisphere before averaging.
         q0 = qs[0]
         for i in range(1, len(qs)):
             if np.dot(q0, qs[i]) < 0.0:
                 qs[i] = -qs[i]
-        q_avg = np.mean(qs, axis=0)
+        q_avg = np.sum([wi * q for wi, q in zip(w, qs)], axis=0)
         norm = np.linalg.norm(q_avg)
         if norm < 1e-6:
             return None
@@ -379,7 +441,12 @@ class AprilTagFuserNode(Node):
         min_pairs = int(self.get_parameter("min_pairs").value)
         tf_timeout = float(self.get_parameter("tf_timeout").value)
 
-        now = time.time()
+        # Use the ROS clock for the freshness check. Comparing message
+        # header time (ROS clock) against ``time.time()`` (wall clock)
+        # is wrong when ``use_sim_time`` is on or when wall-clock and
+        # ROS clock diverge (rosbag replay, paused time).
+        now_ns = self.get_clock().now().nanoseconds
+        max_age_ns = int(max_age * 1e9)
         # Snapshot the cache so the solve doesn't race the subscribers.
         with self._lock:
             snapshot = list(self._latest.items())
@@ -387,8 +454,8 @@ class AprilTagFuserNode(Node):
         # Build (T_ref_to_tag, T_base_to_tag, (family, tag_id)) for each fresh detection.
         pairs: List[Tuple[np.ndarray, np.ndarray, Tuple[str, int]]] = []
         stale = 0
-        for key, (stamp_sec, cam_frame, T_cam_to_tag) in snapshot:
-            if (now - stamp_sec) > max_age:
+        for key, (stamp_ns, cam_frame, T_cam_to_tag) in snapshot:
+            if (now_ns - stamp_ns) > max_age_ns:
                 stale += 1
                 continue
             if not cam_frame:
@@ -403,13 +470,13 @@ class AprilTagFuserNode(Node):
             except Exception as e:
                 # Only log occasionally; per-tick spam is unhelpful.
                 if not hasattr(self, "_last_tf_warn") or (
-                    now - self._last_tf_warn > 5.0
+                    now_ns - self._last_tf_warn > 5_000_000_000
                 ):
                     self.get_logger().warn(
                         f"TF {ref_frame} -> {cam_frame} lookup failed: {e} "
                         f"(will retry; subsequent failures are throttled)"
                     )
-                    self._last_tf_warn = now
+                    self._last_tf_warn = now_ns
                 continue
             T_ref_to_cam = _tf_to_matrix(tf_stamped)
             T_ref_to_tag = T_ref_to_cam @ T_cam_to_tag
@@ -426,25 +493,38 @@ class AprilTagFuserNode(Node):
             with self._lock:
                 self._latest = {
                     k: v for k, v in self._latest.items()
-                    if (now - v[0]) <= max_age
+                    if (now_ns - v[0]) <= max_age_ns
                 }
 
         if not pairs:
             return
 
+        # Per-pair weights (closer tags dominate; see _detection_weights).
+        weights = self._detection_weights(pairs)
+
         # Solve. (T_cam_to_tag_observed, T_base_to_tag_known) -> T_cam_to_base
         # Here the "cam" frame is the reference frame, so we solve for
-        # T_ref_to_base. Use the joint Umeyama solve only when enough pairs are
-        # available; otherwise fall back to averaging per-tag estimates so the
-        # pose never goes silent as long as at least one tag is visible.
+        # T_ref_to_base.
+        #
+        # * With >= 4 pairs, run the RANSAC wrapper -- it draws random
+        #   3-pair subsets, scores by inlier count, and refits on the
+        #   best consensus set. This is robust against single-tag
+        #   outliers (e.g. a mis-classified id, corner flip, sensor
+        #   glitch) that would otherwise pull the entire solve.
+        # * With exactly 3 pairs, the joint Umeyama solve is already
+        #   exact -- no point spending RANSAC iterations.
+        # * With fewer than 3 pairs the joint solve is under-determined;
+        #   fall back to the per-tag inverse averaging so the pose
+        #   never goes silent as long as at least one tag is visible.
         T_ref_to_base = None
-        if len(pairs) >= min_pairs:
-            T_ref_to_base = solve_cam_to_base(
-                [(T_r_t, T_b_t) for T_r_t, T_b_t, _ in pairs]
-            )
+        raw_pairs = [(T_r_t, T_b_t) for T_r_t, T_b_t, _ in pairs]
+        if len(pairs) >= max(min_pairs, 4):
+            T_ref_to_base = solve_cam_to_base_ransac(raw_pairs, weights=weights)
+        elif len(pairs) >= min_pairs:
+            T_ref_to_base = solve_cam_to_base(raw_pairs, weights=weights)
 
         if T_ref_to_base is None and pairs:
-            T_ref_to_base = self._fallback_solve(pairs)
+            T_ref_to_base = self._fallback_solve(pairs, weights=weights)
             if T_ref_to_base is not None:
                 self.get_logger().debug(
                     f"Used per-tag fallback with {len(pairs)} pair(s) "

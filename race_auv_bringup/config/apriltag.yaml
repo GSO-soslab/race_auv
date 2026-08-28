@@ -17,13 +17,12 @@ apriltag:
   # list if a single camera needs different behavior.
   #
   # Defaults are tuned for Jetson Orin (4 perf cores; 2x internal
-  # decimation in pupil_apriltags; nx0 GPU rectify + nvjpeg JPEG).
+  # decimation in apriltag3; nx0 GPU rectify + nvjpeg JPEG).
   detector_defaults:
     nthreads:          4
     quad_decimate:     2.0
     quad_sigma:        0.0
     refine_edges:      true
-    decode_sharpening: 0.25
     publish_rate:      15.0
 
     # --- Hardware acceleration (Jetson / Orin / any CUDA-capable host) ---
@@ -43,8 +42,8 @@ apriltag:
 
   # Master tag list. Each camera entry can override this with its own
   # `tags:` list (recommended), or omit `tags:` to fall back to this
-  # list. IDs are per-family; pupil_apriltags uses the canonical
-  # lowercase name (e.g. "tag36h11").
+  # list. IDs are per-family; apriltag3 uses the canonical lowercase
+  # name (e.g. "tag36h11").
   tags:
     # 4 x tag25h9 @ 21cm
     - { id: 17, family: "tag25h9",  size: 0.21  }

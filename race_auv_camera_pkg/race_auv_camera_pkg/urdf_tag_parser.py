@@ -9,7 +9,7 @@ as ``dock_point``). Examples::
     apriltag36h11_5  -> family="tag36h11", id=5
 
 The literal ``"apriltag"`` prefix is configurable via ``prefix``; the
-``<family>`` token matches any pupil_apriltags family name (regex
+``<family>`` token matches any canonical apriltag family name (regex
 ``tag<digits>h<digits>``), and the ``_<id>`` suffix must be a non-negative
 integer. The pose we want is the homogeneous transform from the base frame
 to the tag frame.
@@ -38,7 +38,7 @@ from scipy.spatial.transform import Rotation as R
 # the remainder is "<family_short>_<id>", e.g. "25h9_0" or "36h11_5".
 # The "tag" prefix (e.g. "tag25h9") is intentionally NOT repeated in the
 # link name; it is re-added in `_parse_tag_link` so the returned family
-# matches pupil_apriltags' canonical naming ("tag25h9", "tag36h11", ...).
+# matches the canonical naming ("tag25h9", "tag36h11", ...).
 _TAG_LINK_RE = re.compile(r"^(?P<family_short>[A-Za-z0-9]+)_(?P<id>\d+)$")
 
 
@@ -112,10 +112,10 @@ def _parse_tag_link(child_link: str, prefix: str) -> Optional[Tuple[str, int]]:
     """Extract ``(family, tag_id)`` from a child link name, or ``None``.
 
     The link must start with ``prefix`` (typically ``"apriltag"``) followed
-    by ``<family_short>_<id>``. ``<family_short>`` is the pupil_apriltags
-    family name without the literal ``"tag"`` prefix (e.g. ``"25h9"``);
-    the function re-adds it so the returned family matches the canonical
-    pupil_apriltags name (``"tag25h9"``). ``<id>`` is a non-negative int.
+    by ``<family_short>_<id>``. ``<family_short>`` is the apriltag family
+    name without the literal ``"tag"`` prefix (e.g. ``"25h9"``); the
+    function re-adds it so the returned family matches the canonical
+    name (``"tag25h9"``). ``<id>`` is a non-negative int.
 
     Examples (with ``prefix="apriltag"``)::
         apriltag25h9_0   -> ("tag25h9",  0)

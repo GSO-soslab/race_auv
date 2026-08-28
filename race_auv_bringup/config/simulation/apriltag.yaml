@@ -32,7 +32,6 @@ apriltag:
     quad_decimate:     1.0
     quad_sigma:        0.0
     refine_edges:      true
-    decode_sharpening: 0.25
     publish_rate:      5.0
 
   # Tag family / id / physical size.
@@ -81,6 +80,16 @@ apriltag:
       output_image_topic: "apriltag_detection/image"
       output_detections_topic: "apriltag_detection/detections3d"
       jpeg_quality: 90          # Foxglove / topside bandwidth vs. detail
+      tags:
+      # 3 x tag25h9 @ 27cm
+      - { id: 2,  family: "tag25h9",  size: 0.27 }
+      - { id: 13, family: "tag25h9",  size: 0.27 }
+      - { id: 17, family: "tag25h9",  size: 0.27 }
+      # 1 x tag36h11 @ 15cm
+      - { id: 146, family: "tag36h11", size: 0.15 }
+      # 2 x tag36h11 @ 5cm
+      - { id: 541, family: "tag36h11", size: 0.05 }
+      - { id: 558, family: "tag36h11", size: 0.05 }
       # # Intrinsics fallback (used only when CameraInfo is absent).
       # intrinsics:
       #   fx: 953.919689
@@ -104,13 +113,12 @@ apriltag:
       output_detections_topic: "apriltag_detection/detections3d"
       # cam_down only ever sees the two flat medium tags (port and starboard
       # apriltag_medium_1 / apriltag_medium_2 in the station SCN). Restricting
-      # the detector to this single (family, size) group means exactly one
-      # pupil_apriltags Detector instance is built and only these two IDs are
-      # accepted, instead of all 8 tags from the global `tags:` list.
+      # the detector to this single (family, size) group means only these two
+      # IDs are decoded, instead of all 8 tags from the global `tags:` list.
+      jpeg_quality: 90          # Foxglove / topside bandwidth vs. detail
       tags:
         - { id: 176, family: "tag36h11", size: 0.15 }
         - { id: 185, family: "tag36h11", size: 0.15 }
-      jpeg_quality: 90          # Foxglove / topside bandwidth vs. detail
       # intrinsics:
       #   fx: 953.919689
       #   fy: 954.022011

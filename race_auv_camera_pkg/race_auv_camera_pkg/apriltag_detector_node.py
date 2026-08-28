@@ -1,9 +1,10 @@
-"""Per-camera AprilTag detector node (no TF, Jetson-tuned).
+"""Per-camera AprilTag detector node (no TF, CPU-only).
 
 A single instance of this node handles one camera. It subscribes to
 either a raw ``sensor_msgs/Image`` or a ``sensor_msgs/CompressedImage``
 topic, plus an optional ``sensor_msgs/CameraInfo`` topic, runs the
-``apriltag_processor.AprilTagDetector`` on each frame, and publishes:
+:class:`race_auv_camera_pkg.apriltag_processor.AprilTagDetector` on
+each frame, and publishes:
 
 * ``vision_msgs/Detection3DArray`` on ``output_detections_topic`` with
   one entry per detected tag. ``Detection3D.id`` is
@@ -17,15 +18,16 @@ topic, plus an optional ``sensor_msgs/CameraInfo`` topic, runs the
 This node does NOT publish any TF. The original pipeline in
 ``race_auv_sim_pkg/apriltag_detector_node.py`` broadcast per-tag frames
 (``apriltag<family>_<id>``) for the multi-camera fuser; that
-responsibility is dropped here: annotated images + ``Detection3DArray``
-topics are the only outputs.
+responsibility is dropped here: annotated images +
+``Detection3DArray`` topics are the only outputs.
 
 Multi-family / multi-size tags
 ------------------------------
-Tags are bucketed by ``(family, tag_size)`` and one
-``AprilTagDetector`` is created per bucket because
-``pupil_apriltags.Detector`` only supports a single ``tag_size`` per
-``detect()`` call.
+The detector instantiates one ``apriltag.apriltag(family=...)`` per
+configured family inside a single ``AprilTagDetector``. Per-tag size
+is looked up *after* decode from the YAML ``tags:`` list, so tags of
+different sizes within the same family share one quad-scan instead
+of being re-decoded for each size bucket.
 
 Two sources for the tag list:
 
@@ -35,23 +37,23 @@ Two sources for the tag list:
   YAML ``tags:`` list is ignored.
 * Otherwise the YAML ``tags:`` list (the global fallback) is used.
 
-Jetson / Orin performance knobs
-------------------------------
-All hardware-acceleration is configured in ``apriltag.yaml`` under
-``detector_defaults:`` -- no environment variables.
+Hardware acceleration
+---------------------
+Hardware acceleration via ``cv2.cuda`` and NVIDIA ``nvjpeg`` was
+removed from this package because neither worked reliably on the
+target platforms (Jetson Orin + generic Linux): the PyPI OpenCV
+wheels do not include CUDA, and the JetPack system package in the
+version we target either ships without NVCOMPRESS or without the
+required CUDA runtime. The whole pipeline now runs on the CPU. The
+``detector_defaults:`` YAML block may still carry the historical
+``use_cuda`` and ``jpeg_backend`` keys -- they are silently ignored
+and a single warning is logged at startup so the operator knows.
 
-* ``use_cuda`` (bool, default false) -- master switch for GPU
-  acceleration. When true, the rectifier tries ``cv2.cuda.remap`` and
-  the JPEG encoder tries hardware paths. Falls back to CPU gracefully
-  on any failure.
-* ``jpeg_backend`` (one of ``"auto"``, ``"nvjpeg"``, ``"cuda"``,
-  ``"cpu"``, default ``"auto"``) -- explicit selection of the
-  annotated-frame JPEG encoder. ``auto`` with ``use_cuda=true`` tries
-  pyNvJPEG (NVIDIA nvjpeg hardware), then ``cv2.cuda.encodeJpeg``,
-  then CPU. ``auto`` with ``use_cuda=false`` is CPU.
+Per-camera performance knobs (CPU pipeline):
+
 * ``process_scale`` (per-camera, default 1.0) -- detect on a
-  downscaled image; annotation stays at full resolution. 0.5 gives
-  ~3-5x faster detection on Orin with negligible accuracy loss for
+  downscaled image; annotation stays at full resolution. ``0.5``
+  gives ~3-5x faster detection with negligible accuracy loss for
   dock-sized tags.
 * ``jpeg_quality`` (per-camera, default 80) -- quality for the
   annotated ``CompressedImage`` (Foxglove bandwidth knob).
@@ -87,20 +89,32 @@ from .apriltag_geom import (
     is_bad_rotation, load_yaml_config, matrix_to_pose_msg, sanitize_rotation,
 )
 from .apriltag_processor import AprilTagDetector
-from .image_jpeg import build_jpeg_encoder
 from .image_processing import build_rectifier
 
 
-# --- Module-level QoS profiles -------------------------------------------------
+# OpenCV's JPEG-quality param-tag. Used as the first element of the
+# ``params=[...]`` list passed to :func:`cv2.imencode`. Kept as a
+# module-level constant so the value is looked up once at import time
+# instead of on every encode.
+_IMWRITE_JPEG_QUALITY = int(cv2.IMWRITE_JPEG_QUALITY)
+
+
+# =============================================================================
+# Module-level QoS profiles
+# =============================================================================
 # Subscriptions: best-effort, low depth. The detector always works on the
-# latest frame; queued frames are wasted CPU.
+# latest frame; queued frames are wasted CPU. ``depth=1`` makes the
+# subscriber drop any in-flight message as soon as a newer one arrives,
+# which matches "I only care about the most recent frame" semantics.
 _SENSOR_QOS = QoSProfile(
     reliability=ReliabilityPolicy.BEST_EFFORT,
     durability=DurabilityPolicy.VOLATILE,
     history=HistoryPolicy.KEEP_LAST,
     depth=1,
 )
-# Publications: reliable, low depth. foxglove_bridge relays them as-is.
+# Publications: reliable, low depth. ``foxglove_bridge`` relays them
+# as-is so we want the same semantics the user expects from a
+# CompressedImage stream.
 _OUTPUT_QOS = QoSProfile(
     reliability=ReliabilityPolicy.RELIABLE,
     durability=DurabilityPolicy.VOLATILE,
@@ -109,13 +123,27 @@ _OUTPUT_QOS = QoSProfile(
 )
 
 
-# Crosshair drawing constants (red, AA lines).
-_CROSSHAIR_COLOR = (0, 0, 255)
+# =============================================================================
+# Crosshair drawing constants
+# =============================================================================
+# The crosshair is drawn at the image center after rectification so the
+# operator can sanity-check that the principal point of the rectified
+# intrinsics lines up with the optical axis.
+_CROSSHAIR_COLOR = (0, 0, 255)        # BGR red
 _CROSSHAIR_THICKNESS = 2
-_CROSSHAIR_ARM_DIVISOR = 15
+_CROSSHAIR_ARM_DIVISOR = 15           # arm = min(H, W) // 15 (~3% of min dim)
 
 
+# =============================================================================
+# Small parameter coercers
+# =============================================================================
 def _as_float(v: Any, default: float = 0.0) -> float:
+    """Coerce ``v`` to ``float``; return ``default`` on ``TypeError``/``ValueError``.
+
+    Used for the YAML-intrinsics fallback path where the parameter
+    server may hand us ``None`` or a non-numeric string when a
+    default has not been set yet.
+    """
     try:
         return float(v)
     except (TypeError, ValueError):
@@ -123,14 +151,22 @@ def _as_float(v: Any, default: float = 0.0) -> float:
 
 
 def _as_int(v: Any, default: int = 0) -> int:
+    """Coerce ``v`` to ``int``; return ``default`` on ``TypeError``/``ValueError``."""
     try:
         return int(v)
     except (TypeError, ValueError):
         return default
 
 
+# =============================================================================
+# Crosshair helper
+# =============================================================================
 def _draw_crosshair(image: np.ndarray) -> None:
-    """Draw a small red cross at the center of ``image`` (in-place)."""
+    """Draw a small red ``+`` at the centre of ``image`` in-place.
+
+    The arm length is ``max(1, min(H, W) // _CROSSHAIR_ARM_DIVISOR)`` so
+    it scales with the image: ~3% of the shorter side.
+    """
     h, w = image.shape[:2]
     cx, cy = w // 2, h // 2
     arm = max(1, min(h, w) // _CROSSHAIR_ARM_DIVISOR)
@@ -141,12 +177,23 @@ def _draw_crosshair(image: np.ndarray) -> None:
 
 
 class AprilTagDetectorNode(Node):
-    """Per-camera detector: image (+ optional CameraInfo) -> detections + image."""
+    """Per-camera detector: image (+ optional CameraInfo) -> detections + image.
+
+    Lifecycle
+    ---------
+    1. ``__init__`` declares all parameters and loads the YAML config.
+    2. We wait for either a ``CameraInfo`` message (``info_topic`` set)
+       or until the YAML intrinsics are populated (``info_topic``
+       empty). In either case we call :meth:`_build_pipeline` once.
+    3. A timer (``publish_rate`` Hz) drains the latest received frame
+       and runs the rectification + detection + annotation + publish
+       pipeline via :meth:`_tick`.
+    """
 
     def __init__(self) -> None:
         super().__init__("apriltag_detector")
 
-        # -------------------------------------------------------------- params
+        # ============================================================ params
         # YAML config path (set by the launch file).
         self.declare_parameter("config_yaml", "")
 
@@ -162,11 +209,11 @@ class AprilTagDetectorNode(Node):
         # Tag list: per-camera JSON override (set by launch), else YAML tags.
         self.declare_parameter("tags_override", "[]")
 
-        # Jetson perf knobs (per-camera).
+        # Per-camera performance knobs.
         self.declare_parameter("process_scale", 1.0)
         self.declare_parameter("jpeg_quality", 80)
 
-        # Intrinsics fallback (used when info_topic is empty).
+        # Intrinsics fallback (used when ``info_topic`` is empty).
         self.declare_parameter("intrinsics.fx", 0.0)
         self.declare_parameter("intrinsics.fy", 0.0)
         self.declare_parameter("intrinsics.cx", 0.0)
@@ -176,53 +223,53 @@ class AprilTagDetectorNode(Node):
         self.declare_parameter("intrinsics.distortion", [0.0, 0.0, 0.0, 0.0, 0.0])
         self.declare_parameter("intrinsics.fisheye", False)
 
-        # --------------------------------------------------------------- state
+        # ============================================================= state
+        # The bridge converts ROS Image/CompressedImage <-> numpy BGR.
         self._bridge = CvBridge()
+        # All shared state is touched from the image callback (writer)
+        # and the timer tick (reader); protect with this lock.
         self._lock = threading.Lock()
         self._latest_bgr: Optional[np.ndarray] = None
         self._latest_stamp = None
         self._info_msg: Optional[CameraInfo] = None
-        # Keyed by (family, tag_size). One detector per group because
-        # pupil_apriltags.Detector only supports a single tag_size per call.
-        self._detectors: Dict[Tuple[str, float], AprilTagDetector] = {}
+        # The single ``AprilTagDetector`` instance. It owns one
+        # ``apriltag.apriltag(family=...)`` per configured family and
+        # looks up per-tag size from ``_group_tags_by_family`` after
+        # decode. ``None`` until ``_build_pipeline`` runs.
+        self._detector: Optional[AprilTagDetector] = None
+        # The single CPU ``ImageRectifier`` instance.
         self._rectifier: Optional[object] = None
         self._rectifier_backend: str = "cpu"
-        self._jpeg_encoder: Optional[object] = None
-        self._jpeg_backend: str = "cpu"
-        self._jpeg_backend_requested: str = "cpu"
+        # JPEG quality cached at pipeline-build time so the encode
+        # path does not need to read a ROS parameter on every frame.
+        self._jpeg_quality: int = 80
         self._process_scale: float = 1.0
+        # ``_ready`` flips true once ``_build_pipeline`` has run; the
+        # tick callback no-ops until then so we don't publish empties
+        # before the first CameraInfo arrives.
         self._ready = False
+        # Running counter of detections dropped because of a bad pose;
+        # used to throttle the per-tick warning spam.
         self._bad_pose_count = 0
-        self._use_cuda = False
 
-        # Load tag list + detector defaults from YAML.
+        # Load tag list + detector defaults from YAML. The historical
+        # ``use_cuda`` / ``jpeg_backend`` keys are read here but only
+        # logged at startup -- they no longer change behaviour.
         self._tags_config: List[Dict] = []
         self._detector_params_template: Dict = {}
         self._load_yaml_config()
 
-        # ---- cv2 diagnostic -------------------------------------------------
-        # Confirm which OpenCV this process actually loaded and whether
-        # CUDA is reachable. The launch file sets PYTHONPATH to a
-        # CUDA-enabled build directory; if `cv2.__file__` here still
-        # points at the apt OpenCV, the override didn't take effect
-        # and CUDA will silently fall back to CPU.
-        try:
-            cuda_devs = int(cv2.cuda.getCudaEnabledDeviceCount())
-        except Exception:
-            cuda_devs = -1
-        self.get_logger().info(
-            f"cv2 loaded from : {cv2.__file__}\n"
-            f"cv2 build info  : {cv2.getBuildInformation().splitlines()[0]}\n"
-            f"cv2 cuda devices: {cuda_devs}"
-        )
-
-        # -------------------------------------------------------- subscriptions
+        # ============================================================ subscriptions
         transport = str(self.get_parameter("image_transport").value or "raw").lower()
         image_topic = str(self.get_parameter("image_topic").value or "")
         info_topic = str(self.get_parameter("info_topic").value or "")
         if not image_topic:
             raise RuntimeError("image_topic parameter is required")
 
+        # Pick the right subscription type / callback based on the
+        # transport: "compressed" subscribes to ``CompressedImage``
+        # directly (no cv_bridge decode cost on the wire) and
+        # "raw" subscribes to the normal ``Image`` topic.
         image_type = CompressedImage if transport == "compressed" else Image
         image_cb = self._image_cb_compressed if transport == "compressed" else self._image_cb_raw
         self.image_sub = self.create_subscription(image_type, image_topic, image_cb, _SENSOR_QOS)
@@ -231,9 +278,11 @@ class AprilTagDetectorNode(Node):
             self.info_sub = self.create_subscription(CameraInfo, info_topic, self._info_cb, _SENSOR_QOS)
         else:
             self.info_sub = None
+            # No CameraInfo on the wire -- build the pipeline straight
+            # from the YAML intrinsics.
             self._try_build_from_yaml_intrinsics()
 
-        # --------------------------------------------------------- publications
+        # ============================================================= publications
         self.image_pub = self.create_publisher(
             CompressedImage, self.get_parameter("output_image_topic").value, _OUTPUT_QOS,
         )
@@ -241,7 +290,7 @@ class AprilTagDetectorNode(Node):
             Detection3DArray, self.get_parameter("output_detections_topic").value, _OUTPUT_QOS,
         )
 
-        # --------------------------------------------------------- tick / init
+        # ============================================================= tick / init
         rate = float(self.get_parameter("publish_rate").value)
         if rate <= 0.0:
             raise ValueError("publish_rate must be > 0")
@@ -250,7 +299,7 @@ class AprilTagDetectorNode(Node):
         self.get_logger().info(
             f"apriltag_detector ready: image={image_topic} "
             f"info={info_topic or '<yaml intrinsics>'} transport={transport} "
-            f"rate={rate}Hz tags={len(self._tags_config)} groups={len(self._detectors)}"
+            f"rate={rate}Hz tags={len(self._tags_config)}"
         )
 
     # =====================================================================
@@ -262,6 +311,11 @@ class AprilTagDetectorNode(Node):
         ``tags_override`` (a JSON-encoded list of ``{id, family, size}``)
         takes precedence when non-empty; otherwise the YAML ``tags:``
         list is used. Detector defaults always come from the YAML.
+
+        The historical ``detector_defaults.use_cuda`` and
+        ``detector_defaults.jpeg_backend`` keys are read and stored
+        only so the startup banner can report them -- they no longer
+        switch behaviour because the GPU paths were removed.
         """
         cfg_path = str(self.get_parameter("config_yaml").value or "")
         inner: Dict = {}
@@ -275,12 +329,19 @@ class AprilTagDetectorNode(Node):
             "quad_decimate": float(det_cfg.get("quad_decimate", 2.0)),
             "quad_sigma": float(det_cfg.get("quad_sigma", 0.0)),
             "refine_edges": bool(det_cfg.get("refine_edges", True)),
-            "decode_sharpening": float(det_cfg.get("decode_sharpening", 0.25)),
         }
 
-        # HW-accel knobs (package-level, read from detector_defaults).
-        self._use_cuda = bool(det_cfg.get("use_cuda", False))
-        self._jpeg_backend_requested = str(det_cfg.get("jpeg_backend", "auto")).lower()
+        # Historical HW-accel knobs -- read so we can log them, but
+        # they do not switch behaviour anymore.
+        use_cuda_yaml = bool(det_cfg.get("use_cuda", False))
+        jpeg_backend_yaml = str(det_cfg.get("jpeg_backend", "cpu")).lower()
+        if use_cuda_yaml or jpeg_backend_yaml not in ("", "cpu", "auto"):
+            self.get_logger().warn(
+                f"YAML 'detector_defaults.use_cuda={use_cuda_yaml}' / "
+                f"'detector_defaults.jpeg_backend={jpeg_backend_yaml!r}' "
+                "are ignored: the cv2.cuda and NVIDIA nvjpeg paths were "
+                "removed from this package. Running on the CPU."
+            )
 
         tags_cfg: List[Dict] = []
         try:
@@ -309,25 +370,37 @@ class AprilTagDetectorNode(Node):
         if not self._tags_config:
             raise RuntimeError("No valid tag entries (tags_override or YAML tags).")
 
-    def _group_tags_by_family_size(self) -> Dict[Tuple[str, float], List[int]]:
-        """Bucket ``_tags_config`` by ``(family, size)`` -> ``[tag_id, ...]``.
+    def _group_tags_by_family(self) -> Tuple[Dict[str, Dict[int, float]], Dict[Tuple[str, int], float], List[str]]:
+        """Bucket ``_tags_config`` by family and produce the per-tag size table.
 
-        Required because ``pupil_apriltags.Detector`` only supports a
-        single ``tag_size`` per ``detect()`` call. Tags in the same
-        family at different sizes must therefore be handled by separate
-        detectors, even though they share the same family decoder.
+        Returns
+        -------
+        per_family
+            ``{family: {tag_id: size}}`` -- the per-family id->size map.
+            Currently informational only (the upstream wrapper doesn't
+            need this), but useful for logging.
+        id_to_size
+            ``{(family, tag_id): size}`` -- the lookup the detector
+            uses after decode to pick the right size for ``estimate_tag_pose``.
+        families
+            Sorted list of unique family names -- the order the
+            detector instantiates its ``apriltag`` wrappers.
         """
-        groups: Dict[Tuple[str, float], List[int]] = {}
+        per_family: Dict[str, Dict[int, float]] = {}
         for tag in self._tags_config:
-            key = (tag["family"], float(tag["size"]))
-            groups.setdefault(key, []).append(int(tag["id"]))
-        return groups
+            per_family.setdefault(tag["family"], {})[int(tag["id"])] = float(tag["size"])
+        id_to_size = {
+            (fam, tag_id): size
+            for fam, d in per_family.items()
+            for tag_id, size in d.items()
+        }
+        return per_family, id_to_size, sorted(per_family)
 
     # =====================================================================
     # Intrinsics -> rectifier + detector pool
     # =====================================================================
     def _yaml_intrinsics(self) -> Optional[Tuple[float, float, float, float, int, int, list, bool]]:
-        """Read the intrinsics.* ROS params into an 8-tuple, or ``None``.
+        """Read the ``intrinsics.*`` ROS params into an 8-tuple, or ``None``.
 
         Returns ``(fx, fy, cx, cy, width, height, distortion_list, fisheye)``
         when the YAML has all the required fields; ``None`` when any
@@ -351,6 +424,12 @@ class AprilTagDetectorNode(Node):
         return fx, fy, cx, cy, width, height, d, fisheye
 
     def _try_build_from_yaml_intrinsics(self) -> None:
+        """Build the pipeline from YAML intrinsics when no CameraInfo is on the wire.
+
+        Called from ``__init__`` when ``info_topic`` is empty. Warns
+        and bails (the tick callback will no-op until a CameraInfo
+        arrives) when the YAML does not have usable intrinsics yet.
+        """
         cfg = self._yaml_intrinsics()
         if cfg is None:
             self.get_logger().warn(
@@ -369,6 +448,13 @@ class AprilTagDetectorNode(Node):
         self._ready = True
 
     def _info_cb(self, msg: CameraInfo) -> None:
+        """First-CameraInfo callback: build the pipeline then ignore later ones.
+
+        After the pipeline is built, every subsequent ``CameraInfo`` is
+        dropped -- the camera intrinsics are assumed stable for the
+        life of the node. (If you ever need to re-tune intrinsics at
+        runtime, this is the place to do it.)
+        """
         if self._ready:
             return
         self._info_msg = msg
@@ -387,9 +473,7 @@ class AprilTagDetectorNode(Node):
             )
         self._build_pipeline(K, D, width, height, is_fisheye=False)
         self._ready = True
-        self.get_logger().info(
-            f"CameraInfo received; {len(self._detectors)} detectors ready."
-        )
+        self.get_logger().info("CameraInfo received; detector pipeline ready.")
 
     def _build_pipeline(
         self,
@@ -399,8 +483,27 @@ class AprilTagDetectorNode(Node):
         height: int,
         is_fisheye: bool,
     ) -> None:
-        """Build the rectifier, JPEG encoder, and per-group detector pool."""
-        # --- Rectifier (CPU or CUDA) ----------------------------------------
+        """Build the rectifier, JPEG encoder, and single detector.
+
+        Called exactly once per node, either from
+        :meth:`_try_build_from_yaml_intrinsics` (no ``info_topic``) or
+        from :meth:`_info_cb` (first ``CameraInfo`` received).
+
+        Steps:
+        1. Clamp ``process_scale`` to ``(0, 1]``.
+        2. Build the CPU ``ImageRectifier`` and read its rectified
+           intrinsics + size.
+        3. If ``process_scale < 1``, compute the intrinsics + size of
+           the downscaled image so ``apriltag3`` can pose-solve in the
+           smaller coordinate system.
+        4. Cache the ``jpeg_quality`` parameter (the encode itself is
+           done inline by :meth:`_publish_annotated` with
+           :func:`cv2.imencode`).
+        5. Build one ``AprilTagDetector`` covering every configured
+           family; per-tag size is looked up after decode.
+        6. Print the startup banner (per-stage backend / scale / quality).
+        """
+        # --- 1. process_scale ------------------------------------------------
         scale = float(self.get_parameter("process_scale").value or 1.0)
         if scale <= 0.0 or scale > 1.0:
             self.get_logger().warn(
@@ -409,6 +512,7 @@ class AprilTagDetectorNode(Node):
             scale = 1.0
         self._process_scale = scale
 
+        # --- 2. CPU rectifier -------------------------------------------------
         self._rectifier, self._rectifier_backend = build_rectifier(
             logger=self.get_logger(),
             camera_matrix=K,
@@ -416,7 +520,6 @@ class AprilTagDetectorNode(Node):
             image_size=(width, height),
             is_fisheye=is_fisheye,
             crop_to_valid_pixels=True,
-            use_cuda=self._use_cuda,
         )
         new_K = self._rectifier.get_intrinsics()
         new_size = {
@@ -425,8 +528,10 @@ class AprilTagDetectorNode(Node):
         }
         new_D = np.zeros(5, dtype=np.float32)
 
-        # If process_scale < 1.0, build a small intrinsics matrix for
-        # pupil_apriltags so its pose solve runs on the downscaled image.
+        # --- 3. Downscaled intrinsics --------------------------------------
+        # apriltag3 pose-solves in the coordinate system of the image
+        # we feed it, so when we feed it the downscaled gray frame we
+        # must also pass it downscaled intrinsics.
         if scale < 1.0:
             small_K = dict(new_K)
             small_K["fx"] = float(new_K["fx"]) * scale
@@ -441,57 +546,45 @@ class AprilTagDetectorNode(Node):
             small_K = new_K
             small_size = new_size
 
-        # --- JPEG encoder (CPU, cv2.cuda, or pyNvJPEG) -----------------------
-        quality = int(self.get_parameter("jpeg_quality").value or 80)
-        self._jpeg_encoder, self._jpeg_backend, jpeg_hints = build_jpeg_encoder(
-            quality=quality,
-            use_cuda=self._use_cuda,
-            requested_backend=self._jpeg_backend_requested,
-            logger=self.get_logger(),
+        # --- 4. Cache the JPEG quality --------------------------------------
+        # The encode itself is done inline in ``_publish_annotated`` via
+        # ``cv2.imencode``; we only need the quality value here so the
+        # encode path does not have to read a ROS parameter on every tick.
+        self._jpeg_quality = int(self.get_parameter("jpeg_quality").value or 80)
+
+        # --- 5. Single detector covering every configured family ---------
+        # One ``AprilTagDetector`` owns one ``apriltag.apriltag(family=...)``
+        # per family; per-tag size is looked up after decode from
+        # ``id_to_size``. The old ``(family, size)`` bucket fan-out is
+        # gone -- one quad-scan per family covers every size in it.
+        per_family, id_to_size, families = self._group_tags_by_family()
+        child_logger = self.get_logger().get_child("det_all")
+        self._detector = AprilTagDetector(
+            families=families,
+            id_to_size=id_to_size,
+            camera_intrinsics=small_K,
+            camera_distortion=new_D.tolist(),
+            image_size=small_size,
+            logger=child_logger,
+            detector_params=dict(self._detector_params_template),
         )
-        if self._jpeg_backend_requested not in ("auto", "cpu") and \
-                self._jpeg_backend != self._jpeg_backend_requested:
-            self.get_logger().warn(
-                f"Requested jpeg_backend={self._jpeg_backend_requested!r} but "
-                f"fell back to {self._jpeg_backend!r} (see startup banner)."
-            )
 
-        # --- Per-(family, size) detectors -----------------------------------
-        groups = self._group_tags_by_family_size()
-        for (family, size), ids in groups.items():
-            child_logger = self.get_logger().get_child(
-                f"det_{family}_{int(round(size * 1000))}mm"
-            )
-            self._detectors[(family, size)] = AprilTagDetector(
-                family=family,
-                tag_size=size,
-                tag_ids=ids,
-                camera_intrinsics=small_K,
-                camera_distortion=new_D.tolist(),
-                image_size=small_size,
-                logger=child_logger,
-                detector_params=dict(self._detector_params_template),
-            )
-
-        # --- Startup HW-accel banner ----------------------------------------
-        lines = [
-            "=== HW acceleration ===",
-            f"  use_cuda (yaml) : {self._use_cuda}",
-            f"  rectify backend : {self._rectifier_backend}",
-            f"  jpeg   backend  : {self._jpeg_backend} (requested: {self._jpeg_backend_requested})",
-            f"  process_scale   : {self._process_scale}",
-            f"  jpeg_quality    : {quality}",
-        ]
-        for hint in jpeg_hints:
-            lines.append(f"  hint            : {hint}")
-        self.get_logger().info("\n".join(lines))
-        for hint in jpeg_hints:
-            self.get_logger().warn(f"HW fallback hint: {hint}")
+        # --- 6. Startup banner ----------------------------------------------
+        # Single-line, easy-to-grep summary of what was actually built.
+        self.get_logger().info(
+            "=== Pipeline (CPU) ===\n"
+            f"  rectify backend : {self._rectifier_backend}\n"
+            f"  jpeg   backend  : cpu (cv2.imencode)\n"
+            f"  process_scale   : {self._process_scale}\n"
+            f"  jpeg_quality    : {self._jpeg_quality}\n"
+            f"  families        : {families} ({sum(len(v) for v in per_family.values())} tags)"
+        )
 
     # =====================================================================
     # Image callbacks
     # =====================================================================
     def _image_cb_raw(self, msg: Image) -> None:
+        """``raw`` transport callback: ``sensor_msgs/Image`` -> BGR numpy."""
         try:
             bgr = self._bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
         except Exception as e:
@@ -502,6 +595,7 @@ class AprilTagDetectorNode(Node):
             self._latest_stamp = msg.header.stamp
 
     def _image_cb_compressed(self, msg: CompressedImage) -> None:
+        """``compressed`` transport callback: ``CompressedImage`` -> BGR numpy."""
         try:
             bgr = self._bridge.compressed_imgmsg_to_cv2(msg, desired_encoding="bgr8")
         except Exception as e:
@@ -515,6 +609,14 @@ class AprilTagDetectorNode(Node):
     # Tick: process_frame -> build_detection_message -> publish_annotated
     # =====================================================================
     def _tick(self) -> None:
+        """Drain the latest received frame and run the full pipeline.
+
+        Runs at ``publish_rate`` Hz. Skips silently when:
+
+        * the pipeline is not built yet (``_ready`` is False -- waiting
+          on the first ``CameraInfo``);
+        * no frame has been received yet (``_latest_bgr`` is None).
+        """
         if not self._ready:
             return
         with self._lock:
@@ -533,14 +635,26 @@ class AprilTagDetectorNode(Node):
     def _process_frame(
         self, bgr: np.ndarray,
     ) -> Tuple[np.ndarray, List[Tuple[str, int, np.ndarray, bool]]]:
-        """Rectify + downscale + detect + annotate. Returns ``(work, detections)``.
+        """Rectify + downscale + detect + annotate a single frame.
 
-        ``work`` is the full-resolution rectified BGR ready for the
-        crosshair + JPEG encode pass. ``detections`` is the list of
-        ``(family, tag_id, T_cam_to_tag, was_bad)`` for the message.
+        Parameters
+        ----------
+        bgr
+            Latest BGR frame as decoded by ``cv_bridge``.
+
+        Returns
+        -------
+        (work, detections)
+            ``work`` is the full-resolution rectified BGR ready for
+            the crosshair + JPEG encode pass. ``detections`` is the
+            list of ``(family, tag_id, T_cam_to_tag, was_bad)`` that
+            ``_publish_detections`` turns into a
+            ``vision_msgs/Detection3DArray``.
         """
+        # 1. Rectify on the CPU (always full resolution).
         work = self._rectifier.rectify(bgr)
 
+        # 2. Optionally downscale for faster detection.
         if self._process_scale < 1.0:
             small = cv2.resize(
                 work, None,
@@ -551,55 +665,57 @@ class AprilTagDetectorNode(Node):
             small = work
         gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
 
+        # 3. Run the single detector (one quad-scan per family, internal).
         detected: List[Tuple[str, int, np.ndarray, bool]] = []
-        for (family, _size), detector in self._detectors.items():
+        detector = self._detector
+        if detector is None:
+            return work, detected
+        try:
+            detections = detector.detect(gray)
+        except Exception as e:
+            self.get_logger().warn(f"Detector failed: {e}; skipping this tick.")
+            return work, detected
+
+        # 4. Scale corner coordinates back up to full resolution so
+        #    the annotation overlays line up on ``work``.
+        if self._process_scale < 1.0 and detections:
+            inv = 1.0 / self._process_scale
+            detections = [
+                {**d, "corners": d["corners"] * inv} for d in detections
+            ]
+
+        # 5. Sanitize the pose; drop detections whose rotations
+        #    are unrecoverable (very noisy / degenerate).
+        for det in detections:
+            family = det["family"]
+            tag_id = det["tag_id"]
+            T = det["T"]
             try:
-                detections = detector.detect(gray)
+                was_bad = is_bad_rotation(T[:3, :3])
+                T[:3, :3] = sanitize_rotation(T[:3, :3])
+                if (
+                    not np.all(np.isfinite(T[:3, :3]))
+                    or np.linalg.det(T[:3, :3]) < 0.5
+                ):
+                    raise ValueError("rotation unrecoverable after SVD")
+                detected.append((family, tag_id, T, was_bad))
             except Exception as e:
-                self.get_logger().warn(
-                    f"Detector (family={family}, ids={sorted(detector.tag_ids)}) "
-                    f"failed: {e}; skipping this tick."
-                )
-                continue
+                self._bad_pose_count += 1
+                if self._bad_pose_count in (1, 10, 100, 1000) or (
+                    self._bad_pose_count % 1000 == 0
+                ):
+                    self.get_logger().warn(
+                        f"Skipped tag {family}:{tag_id} with bad pose "
+                        f"(total bad-rotation drops: {self._bad_pose_count}): {e}"
+                    )
 
-            # Scale corners back up to full-res so annotate draws on ``work``.
-            if self._process_scale < 1.0 and detections:
-                inv = 1.0 / self._process_scale
-                scaled = []
-                for det in detections:
-                    d2 = dict(det)
-                    d2["corners"] = det["corners"] * inv
-                    scaled.append(d2)
-                detections = scaled
-
-            for det in detections:
-                tag_id = det["tag_id"]
-                T = det["T"]
-                try:
-                    was_bad = is_bad_rotation(T[:3, :3])
-                    T[:3, :3] = sanitize_rotation(T[:3, :3])
-                    if (
-                        not np.all(np.isfinite(T[:3, :3]))
-                        or np.linalg.det(T[:3, :3]) < 0.5
-                    ):
-                        raise ValueError("rotation unrecoverable after SVD")
-                    detected.append((family, tag_id, T, was_bad))
-                except Exception as e:
-                    self._bad_pose_count += 1
-                    if self._bad_pose_count in (1, 10, 100, 1000) or (
-                        self._bad_pose_count % 1000 == 0
-                    ):
-                        self.get_logger().warn(
-                            f"Skipped tag {family}:{tag_id} with bad pose "
-                            f"(total bad-rotation drops: {self._bad_pose_count}): {e}"
-                        )
-
-            try:
-                detector.annotate(work, detections)
-            except Exception as e:
-                self.get_logger().warn(
-                    f"Detector (family={family}) annotate failed: {e}"
-                )
+        # 6. Draw the bounding box + label block on the full-res
+        #    ``work`` image. Annotation errors must not stop the
+        #    pipeline -- log and continue.
+        try:
+            detector.annotate(work, detections)
+        except Exception as e:
+            self.get_logger().warn(f"Detector annotate failed: {e}")
 
         return work, detected
 
@@ -607,11 +723,28 @@ class AprilTagDetectorNode(Node):
     # Publications
     # =====================================================================
     def _publish_annotated(self, work: np.ndarray, stamp) -> None:
-        """Encode ``work`` to JPEG (HW or CPU) and publish as CompressedImage."""
+        """Encode ``work`` to JPEG (CPU) and publish as ``CompressedImage``.
+
+        Encoding is done inline with :func:`cv2.imencode` -- there is no
+        GPU / hardware encoder in this pipeline, so the earlier
+        ``image_jpeg.py`` factory that selected between
+        ``cv2.cuda.encodeJpeg`` / ``pyNvJPEG`` / CPU backends was
+        deleted and the call lives here.
+
+        The frame id of the published message comes from
+        :meth:`_camera_frame_id` (ROS param override -> ``CameraInfo``
+        header -> hard-coded fallback).
+        """
         try:
-            jpeg_bytes = self._jpeg_encoder.encode(work)
+            ok, buf = cv2.imencode(
+                ".jpg", work,
+                [_IMWRITE_JPEG_QUALITY, self._jpeg_quality],
+            )
+            if not ok:
+                raise RuntimeError("cv2.imencode returned False")
+            jpeg_bytes = bytes(buf.tobytes() if hasattr(buf, "tobytes") else buf)
         except Exception as e:
-            self.get_logger().error(f"JPEG encode failed ({self._jpeg_backend}): {e}")
+            self.get_logger().error(f"JPEG encode failed: {e}")
             return
 
         msg = CompressedImage()
@@ -626,6 +759,12 @@ class AprilTagDetectorNode(Node):
         detected: List[Tuple[str, int, np.ndarray, bool]],
         stamp,
     ) -> None:
+        """Publish ``detected`` as ``vision_msgs/Detection3DArray``.
+
+        Each entry's ``id`` is ``f"{family}:{tag_id}"`` so downstream
+        consumers (the fuser, Foxglove panels) can disambiguate
+        tags that share an id across families.
+        """
         msg = Detection3DArray()
         msg.header.stamp = stamp
         msg.header.frame_id = self._camera_frame_id()
@@ -650,6 +789,14 @@ class AprilTagDetectorNode(Node):
     # Frame id
     # =====================================================================
     def _camera_frame_id(self) -> str:
+        """Pick the TF frame id for published messages.
+
+        Order of precedence:
+
+        1. ``camera_frame`` ROS param (set by the launch file).
+        2. ``CameraInfo.header.frame_id`` (when ``info_topic`` is set).
+        3. Hard-coded fallback ``"camera_optical_frame"``.
+        """
         override = str(self.get_parameter("camera_frame").value or "")
         if override:
             return override
@@ -659,6 +806,7 @@ class AprilTagDetectorNode(Node):
 
 
 def main() -> None:
+    """Entry point for the ``apriltag_detector_node`` console script."""
     rclpy.init()
     node = AprilTagDetectorNode()
     try:
