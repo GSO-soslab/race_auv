@@ -1,4 +1,6 @@
 bhv_teleop:
+  default_bhv_world_link: world_ned
+  default_bhv_child_link: cg_link
   ####tele-op, ang in degrees####
   ##left up/down controls surge
   ##X and B controls yaw
@@ -10,7 +12,7 @@ bhv_teleop:
   tele_s_sway: -1.0
   tele_d_yaw: 10.0 
   tele_d_pitch: 10.0
-  tele_d_depth: 0.5
+  tele_d_depth: 0.2
 
 bhv_direct_control:
     # unit: meter

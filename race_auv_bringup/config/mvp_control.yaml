@@ -6,3 +6,4 @@
     child_link_initial: cg_link
     world_link_initial: world_ned
     controller_no_setpoint_timeout: 1.0
+    # total_force_cost_factor: 0.005
