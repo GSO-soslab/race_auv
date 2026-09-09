@@ -8,6 +8,18 @@ seen by **all** cameras. The result is published as a single TF:
 
     <reference_frame>  --(T_ref_to_output)-->  <output_frame>
 
+In addition, when ``publish_tag_tfs`` is enabled the fuser broadcasts one
+TF per freshly-detected tag:
+
+    <reference_frame>  --(T_ref_to_tag)-->  apriltag_<family>_<id>
+
+e.g. ``base_link -> apriltag_tag36h11_5``. These are raw per-observation
+poses (noisier than the fused output) and they do not depend on the
+joint solve succeeding. When two cameras see the same tag in one tick,
+the estimate from the camera whose observation is closest to the tag
+wins. Tag frames disappear from TF as soon as the detection goes stale
+(same lifetime semantics as the fused TF).
+
 The frame that ends up in the published TF is the URDF link named
 ``object.dock_link_name`` (default: the object's base link itself). With
 the default config the dock frame is the station's ``base_link``; set
@@ -157,6 +169,19 @@ class AprilTagFuserNode(Node):
                 )
             ),
         )
+        self.declare_parameter(
+            "publish_tag_tfs", True,
+            ParameterDescriptor(
+                description=(
+                    "Broadcast one TF per freshly-detected tag: "
+                    "reference_frame -> apriltag_<family>_<id> (e.g. "
+                    "base_link -> apriltag_tag36h11_5). Raw per-camera "
+                    "observation, noisier than the fused output TF; "
+                    "closest camera wins when two cameras see the "
+                    "same tag in one tick."
+                )
+            ),
+        )
 
         # --- Load URDF tag transforms ---
         # Keyed by (family, tag_id) since tag ids are per-family.
@@ -222,7 +247,8 @@ class AprilTagFuserNode(Node):
             f"apriltag_fuser ready: ref={self.get_parameter('reference_frame').value} "
             f"output={self.get_parameter('output_frame').value} rate={rate} Hz "
             f"min_pairs={self.get_parameter('min_pairs').value} "
-            f"detection_max_age={self.get_parameter('detection_max_age').value} s"
+            f"detection_max_age={self.get_parameter('detection_max_age').value} s "
+            f"tag_tfs={self.get_parameter('publish_tag_tfs').value}"
         )
 
     # ------------------------------------------------------------------ helpers
@@ -440,6 +466,7 @@ class AprilTagFuserNode(Node):
         max_age = float(self.get_parameter("detection_max_age").value)
         min_pairs = int(self.get_parameter("min_pairs").value)
         tf_timeout = float(self.get_parameter("tf_timeout").value)
+        publish_tag_tfs = bool(self.get_parameter("publish_tag_tfs").value)
 
         # Use the ROS clock for the freshness check. Comparing message
         # header time (ROS clock) against ``time.time()`` (wall clock)
@@ -453,6 +480,11 @@ class AprilTagFuserNode(Node):
 
         # Build (T_ref_to_tag, T_base_to_tag, (family, tag_id)) for each fresh detection.
         pairs: List[Tuple[np.ndarray, np.ndarray, Tuple[str, int]]] = []
+        # Per-tag raw estimates for the TF broadcast, keyed by
+        # (family, tag_id): (distance_to_tag, T_ref_to_tag). When two
+        # cameras see the same tag in one tick the closest observation
+        # wins.
+        tag_estimates: Dict[Tuple[str, int], Tuple[float, np.ndarray]] = {}
         stale = 0
         for key, (stamp_ns, cam_frame, T_cam_to_tag) in snapshot:
             if (now_ns - stamp_ns) > max_age_ns:
@@ -487,6 +519,10 @@ class AprilTagFuserNode(Node):
                 continue
             T_base_to_tag = self._tag_transforms[tag_key].T_base_to_tag
             pairs.append((T_ref_to_tag, T_base_to_tag, tag_key))
+            dist = float(np.linalg.norm(T_ref_to_tag[:3, 3]))
+            prev = tag_estimates.get(tag_key)
+            if prev is None or dist < prev[0]:
+                tag_estimates[tag_key] = (dist, T_ref_to_tag)
 
         # Drop stale entries from the cache so they don't accumulate forever.
         if stale:
@@ -498,6 +534,20 @@ class AprilTagFuserNode(Node):
 
         if not pairs:
             return
+
+        now_msg = self.get_clock().now().to_msg()
+
+        # Per-tag TFs are raw per-observation poses and do not depend
+        # on the joint solve below succeeding.
+        if publish_tag_tfs:
+            tag_msgs = [
+                matrix_to_transform_stamped(
+                    T_tag, ref_frame, f"apriltag_{family}_{tag_id}", now_msg,
+                )
+                for (family, tag_id), (_dist, T_tag) in sorted(tag_estimates.items())
+            ]
+            if tag_msgs:
+                self._tf_broadcaster.sendTransform(tag_msgs)
 
         # Per-pair weights (closer tags dominate; see _detection_weights).
         weights = self._detection_weights(pairs)
@@ -542,7 +592,6 @@ class AprilTagFuserNode(Node):
             T_base_to_dock = np.eye(4)
         T_ref_to_out = T_ref_to_base @ T_base_to_dock
 
-        now_msg = self.get_clock().now().to_msg()
         self._tf_broadcaster.sendTransform(
             matrix_to_transform_stamped(
                 T_ref_to_out, ref_frame, out_frame, now_msg,

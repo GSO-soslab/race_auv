@@ -188,6 +188,9 @@ def _build_pairs(config_path: str) -> List[_CamPair]:
         # per-camera knobs are pure image-pipeline tunings.
         process_scale = float(cam.get("process_scale", 1.0))
         jpeg_quality = int(cam.get("jpeg_quality", 80))
+        min_edge_dist = int(
+            cam.get("min_edge_dist", detector_defaults.get("min_edge_dist", 10))
+        )
 
         detector_node = Node(
             package="race_auv_camera_pkg",
@@ -207,6 +210,7 @@ def _build_pairs(config_path: str) -> List[_CamPair]:
                 "tags_override": tags_override_json,
                 "process_scale": process_scale,
                 "jpeg_quality": jpeg_quality,
+                "min_edge_dist": min_edge_dist,
                 "intrinsics.fx": float(intrinsics.get("fx", 0.0)),
                 "intrinsics.fy": float(intrinsics.get("fy", 0.0)),
                 "intrinsics.cx": float(intrinsics.get("cx", 0.0)),

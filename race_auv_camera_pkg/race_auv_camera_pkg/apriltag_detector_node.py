@@ -18,8 +18,10 @@ each frame, and publishes:
 This node does NOT publish any TF. The original pipeline in
 ``race_auv_sim_pkg/apriltag_detector_node.py`` broadcast per-tag frames
 (``apriltag<family>_<id>``) for the multi-camera fuser; that
-responsibility is dropped here: annotated images +
-``Detection3DArray`` topics are the only outputs.
+responsibility moved to ``apriltag_fuser_node`` (which now broadcasts
+``<reference_frame> -> apriltag_<family>_<id>`` per freshly-detected
+tag, toggleable via its ``publish_tag_tfs`` param). Here, annotated
+images + ``Detection3DArray`` topics are the only outputs.
 
 Multi-family / multi-size tags
 ------------------------------
@@ -213,6 +215,11 @@ class AprilTagDetectorNode(Node):
         self.declare_parameter("process_scale", 1.0)
         self.declare_parameter("jpeg_quality", 80)
 
+        # Minimum pixel distance from a detected tag's edge to the
+        # rectified image border. Detections closer than this are
+        # dropped (see ``_filter_edge_clipped``).
+        self.declare_parameter("min_edge_dist", 10)
+
         # Intrinsics fallback (used when ``info_topic`` is empty).
         self.declare_parameter("intrinsics.fx", 0.0)
         self.declare_parameter("intrinsics.fy", 0.0)
@@ -244,6 +251,8 @@ class AprilTagDetectorNode(Node):
         # path does not need to read a ROS parameter on every frame.
         self._jpeg_quality: int = 80
         self._process_scale: float = 1.0
+        # Cached at pipeline-build time; see ``_filter_edge_clipped``.
+        self._min_edge_dist: int = 10
         # ``_ready`` flips true once ``_build_pipeline`` has run; the
         # tick callback no-ops until then so we don't publish empties
         # before the first CameraInfo arrives.
@@ -551,6 +560,7 @@ class AprilTagDetectorNode(Node):
         # ``cv2.imencode``; we only need the quality value here so the
         # encode path does not have to read a ROS parameter on every tick.
         self._jpeg_quality = int(self.get_parameter("jpeg_quality").value or 80)
+        self._min_edge_dist = _as_int(self.get_parameter("min_edge_dist").value, 10)
 
         # --- 5. Single detector covering every configured family ---------
         # One ``AprilTagDetector`` owns one ``apriltag.apriltag(family=...)``
@@ -577,6 +587,7 @@ class AprilTagDetectorNode(Node):
             f"  jpeg   backend  : cpu (cv2.imencode)\n"
             f"  process_scale   : {self._process_scale}\n"
             f"  jpeg_quality    : {self._jpeg_quality}\n"
+            f"  min_edge_dist   : {self._min_edge_dist}px\n"
             f"  families        : {families} ({sum(len(v) for v in per_family.values())} tags)"
         )
 
@@ -632,6 +643,23 @@ class AprilTagDetectorNode(Node):
         self._publish_annotated(work, stamp)
         self._publish_detections(detected_tags, stamp)
 
+    def _within_frame(self, corners: np.ndarray, width: int, height: int) -> bool:
+        """``True`` when every corner is >= ``min_edge_dist`` px from the border.
+
+        ``corners`` must already be in the full-resolution rectified
+        image's coordinate system (i.e. after the ``process_scale``
+        up-scaling in :meth:`_process_frame`).
+        """
+        d = self._min_edge_dist
+        if d <= 0:
+            return True
+        x_min, y_min = corners[:, 0].min(), corners[:, 1].min()
+        x_max, y_max = corners[:, 0].max(), corners[:, 1].max()
+        return (
+            x_min >= d and y_min >= d
+            and x_max <= (width - 1 - d) and y_max <= (height - 1 - d)
+        )
+
     def _process_frame(
         self, bgr: np.ndarray,
     ) -> Tuple[np.ndarray, List[Tuple[str, int, np.ndarray, bool]]]:
@@ -682,6 +710,17 @@ class AprilTagDetectorNode(Node):
             inv = 1.0 / self._process_scale
             detections = [
                 {**d, "corners": d["corners"] * inv} for d in detections
+            ]
+
+        # 4b. Drop detections whose corners fall within
+        #     ``min_edge_dist`` pixels of the rectified image border --
+        #     a tag partially clipped by the frame edge yields
+        #     unreliable corner geometry and pose.
+        if detections:
+            h, w = work.shape[:2]
+            detections = [
+                d for d in detections
+                if self._within_frame(d["corners"], w, h)
             ]
 
         # 5. Sanitize the pose; drop detections whose rotations

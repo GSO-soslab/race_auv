@@ -24,6 +24,11 @@ apriltag:
     quad_sigma:        0.0
     refine_edges:      true
     publish_rate:      15.0
+    # Minimum pixel distance from a detected tag's edge to the
+    # rectified image border. Detections closer than this are dropped
+    # (their corners are likely clipped by the frame, giving an
+    # unreliable pose). Override per-camera in the `cameras:` list.
+    min_edge_dist:     10
 
     # --- Hardware acceleration (Jetson / Orin / any CUDA-capable host) ---
     # Master switch. When true, the rectifier tries cv2.cuda.remap and

@@ -32,7 +32,12 @@ apriltag:
     quad_decimate:     1.0
     quad_sigma:        0.0
     refine_edges:      true
-    publish_rate:      5.0
+    publish_rate:      7.0
+    # Minimum pixel distance from a detected tag's edge to the
+    # rectified image border. Detections closer than this are dropped
+    # (their corners are likely clipped by the frame, giving an
+    # unreliable pose). Override per-camera in the `cameras:` list.
+    min_edge_dist:     10
 
   # Tag family / id / physical size.
   #
@@ -142,7 +147,7 @@ apriltag:
     # underlying URDF link name (object.dock_link_name) stays as "dock_point".
     output_frame:    "race_station/dock_point"
     output_pose_topic: "race_station/dock_point/pose"   # "" to disable
-    publish_rate:    5.0
+    publish_rate:    7.0
     min_pairs:       1
     detection_max_age: 0.5
     tf_timeout:      0.1

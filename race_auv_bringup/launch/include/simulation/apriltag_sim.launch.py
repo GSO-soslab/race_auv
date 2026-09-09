@@ -77,6 +77,9 @@ def _build_nodes(context, *args, **kwargs):
         )
         process_scale = float(cam.get("process_scale", 1.0))
         jpeg_quality = int(cam.get("jpeg_quality", 80))
+        min_edge_dist = int(
+            cam.get("min_edge_dist", detector_defaults.get("min_edge_dist", 10))
+        )
 
         intrinsics = cam.get("intrinsics", {}) or {}
 
@@ -108,6 +111,7 @@ def _build_nodes(context, *args, **kwargs):
                     "publish_rate": publish_rate,
                     "process_scale": process_scale,
                     "jpeg_quality": jpeg_quality,
+                    "min_edge_dist": min_edge_dist,
                     "tags_override": tags_override_json,
                     "intrinsics.fx": float(intrinsics.get("fx", 0.0)),
                     "intrinsics.fy": float(intrinsics.get("fy", 0.0)),
