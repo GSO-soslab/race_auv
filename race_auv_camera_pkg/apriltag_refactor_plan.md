@@ -1,268 +1,325 @@
-# AprilTag Pipeline Refactor Plan
+# AprilTag Backend Refactor Plan — In-Process CUDA Detector (cuAprilTags)
 
-Goal: replace the per-`(family, size)` `pupil_apriltags.Detector` setup with one
-detector per family from the upstream `AprilRobotics/apriltag` library, and
-inject the per-tag size *after* decode to compute each tag's pose via the
-library's native `estimate_tag_pose()`. This eliminates redundant quad scans
-across sizes and unifies the pose math in a single library.
+**Status:** planned, not yet implemented (2026-09-10).
+This document supersedes the earlier `pupil_apriltags` -> `apriltag3` plan.
+The existing `AprilTagDetector` (`apriltag_processor.py`) stays in the tree as
+the `python` fallback backend; the CUDA backend is added alongside it.
 
-## Status (current as of 2026-08-28)
+## Goal
 
-* **Done previously**:
-  * `cv2.cuda` (rectifier + JPEG encoder) and NVIDIA `nvjpeg`
-    (`pyNvJPEG`) paths removed. See `image_processing.py` (top-of-file
-    comment) and `apriltag_detector_node._publish_annotated` for the
-    rationale.
-  * `race_auv_camera_pkg/image_jpeg.py` deleted. JPEG encode is now
-    inline `cv2.imencode` in
-    `apriltag_detector_node._publish_annotated`.
-  * CPU pipeline annotated; per-frame timings documented in `Jetson.md`.
-* **Fuser hardening** (landed):
-  * Fix `time.time()` -> ROS clock in `apriltag_fuser_node._tick`
-    (the cache stamps were already ROS time; the comparison was not).
-  * `solve_cam_to_base_ransac` added in `apriltag_geom.py`; the
-    fuser uses it when >= 4 pairs are available, falls back to the
-    exact joint Umeyama at 3 pairs.
-  * Per-pair weighting in the SVD solve (`solve_cam_to_base` gained a
-    `weights` parameter, default unweighted for back-compat). The
-    fuser uses `1/d^2` weights via `_detection_weights`.
-* **This plan's pupil_apriltags -> apriltag3 swap**: **implemented**.
-  See `apriltag_processor.py` for the new detector and the node edits
-  in `apriltag_detector_node.py`.
-
-The line numbers throughout the rest of this document refer to the
-state of the codebase after the GPU removal / fuser hardening landed.
-If you re-run the plan, diff against current line numbers rather than
-trusting the references below.
-
-## Background
-
-- The current code (`race_auv_camera_pkg/apriltag_processor.py`) creates one
-  `pupil_apriltags.Detector` per `(family, tag_size)` bucket because
-  pupil_apriltags' `detect()` only accepts a single `tag_size` per call.
-- With the current YAML (`race_auv_bringup/config/apriltag.yaml`) we have 3
-  buckets: `tag25h9 @ 0.21 m`, `tag36h11 @ 0.125 m`, `tag36h11 @ 0.04 m`.
-  `_process_frame` (`apriltag_detector_node.py:555-563`) runs the quad-detect
-  pass three times per frame.
-- pupil_apriltags' `if/elif` chain in `bindings.py` only registers one family
-  per instance despite its "space-separated families" docstring — so the
-  claimed multi-family single-scan property never actually held.
-- The upstream `AprilRobotics/apriltag` C extension (`apriltag_pywrap.c`)
-  exposes two clean calls: `detect()` (no pose) and
-  `estimate_tag_pose(det, tagsize, fx, fy, cx, cy)`. The latter matches the
-  snippet in the upstream README and lets us inject the correct size per tag
-  after decode.
-
-## Architecture (after)
+Replace the CPU `AprilRobotics/apriltag` (`apriltag3`) detector with an
+**in-process CUDA detector** based on NVIDIA's `cuAprilTags` library (the same
+library `isaac_ros_apriltag` wraps) without adding any new ROS nodes, topics,
+or processes:
 
 ```
-                              apriltag.yaml: tags:[{id,family,size}]
-                                          |
-                                          v
-                         id_to_size: Dict[(family, id)] -> size_m
-                                          |
-                                          v
-              one AprilTagDetector per node, holding
-              Dict[family -> apriltag.apriltag(family=...)]
-                                          |
-              per frame: gray image                       |
-                  |                                      |
-                  v                                      |
-        for each family det:                             |
-            dets = det.detect(gray)        # one scan   |
-            for d in dets:                                |
-                if (family,id) not in id_to_size: drop   |
-                size = id_to_size[(family,id)]            |
-                pose = det.estimate_tag_pose(d,size,fx,fy,cx,cy)
-                T = build_T(pose["R"], pose["t"])        |
-                emit dict {family, tag_id, T, corners, bad_pose}
+CompressedImage -> cv_bridge -> CPU fisheye rectify -> BGR (existing)
+  -> CuAprilTagDetector.detect(bgr)      # ctypes -> shim .so -> libcuapriltags + cudart
+  -> filter (family, id) by YAML size table
+  -> rescale translation by size / nominal_size
+  -> annotate + publish CompressedImage + Detection3DArray (existing)
+  -> existing apriltag_fuser_node (unchanged)
 ```
 
-One Python detector instance per family (we accept one quad-scan per family —
-this matches the original "one detector per family" ask from the user and
-saves the (size) bucketing). Per-tag size is looked up post-decode and fed
-into the same library's `estimate_tag_pose()`. No `cv2.aruco` or
-`cv2.SOLVEPNP_IPPE_SQUARE` is required for pose.
+CUDA supports `tag36h11` only, so all `tag25h9` entries are dropped (locked
+decision). The Python backend is kept for fallback and simulation.
 
-## Decisions (locked in for this implementation)
+## Why not launch `isaac_ros_apriltag`
+
+* The Isaac ROS package exposes **no in-process API**: `isaac_ros_apriltag`
+  ships only a composable node (`nvidia::isaac_ros::apriltag::AprilTagNode`).
+* Its CUDA path (`CUAprilTagImpl` in `src/apriltag_node.cpp`) is a thin wrapper
+  over three C functions exported by `libcuapriltags.a`.
+* Running it as a node would force publishing a raw (rectified) image plus a
+  `camera_info`, launching a container, and waiting on `tag_detections` -- all
+  rejected by the user.
+* Consequence: we do **not** need NITROS, VPI, `isaac_ros_common`, or a
+  `colcon build` of `isaac_ros_apriltag`. Only the cuAprilTags static library
+  and header from `isaac_ros_nitros` are used.
+
+## Decisions locked
 
 | Question | Decision |
 |---|---|
-| Library | `AprilRobotics/apriltag` (upstream C extension). The repo has no `setup.py` / `pyproject.toml`, so we install via `cmake -B build && cmake --build build --target install` — see `Jetson.md` §0. |
-| Multi-family single-quad-scan | **No** — both wrappers are single-family per instance. One `apriltag.apriltag(family=...)` per family. |
-| Size table source | YAML `tags:` list (id + family + size) — no change. |
-| Pose API | `apriltag3.estimate_tag_pose(det, tagsize, fx, fy, cx, cy)` — the native call, matches the README. |
-| `cv2.drawFrameAxes` overlay | Already live at `apriltag_processor.py`; the "re-enable" bullet in the earlier plan was stale. Kept. |
-| `decode_sharpening` | **Dropped** from YAML and from the processor's params template — was a `pupil_apriltags` knob. |
-| Corner order in published dict | `lb-rb-rt-lt` (upstream's native order). Downstream fuser only reads `T`, so no consumer impact. |
-| Verification | Foxglove visual on a live run. No recorded-bag regression script. |
-| Fallback | Hard cutover — `python3-pupil-apriltags` removed from `package.xml`. |
+| Integration | Existing Python node kept; new `CuAprilTagDetector` in `apriltag_cuda.py`; a thin C shim `.so` underneath (ctypes cannot load a static `.a`, and the shim hides NVIDIA's struct padding). |
+| Library source | `isaac_ros_nitros` git submodule (branch `release-4.6`) under `third_party/`, with Git LFS + sparse checkout. No vendoring / redistribution. |
+| Tag family | `tag36h11` only; all `tag25h9` configuration removed. |
+| Tag size | One detector per camera created at `cuda_nominal_size` (0.125 m); translation rescaled per tag: `t_true = t_reported * (size_true / nominal_size)`; rotation unchanged. Exact per `cuAprilTags.h` ("translation ... expressed in the same units as the tag_size"). |
+| Rectification | Stays CPU (`image_processing.ImageRectifier`); the Stellar cameras are fisheye and cuAprilTags requires an undistorted input. |
+| Backend switch | `detector_backend: cuda|python` ROS/YAML param; `python` remains the default fallback. |
+| Platform | Jetson Orin, JetPack 7.2, ROS 2 Jazzy (x86_64/Jazzy dev box for pre-testing). |
+| Max tags | 64 per camera (matches the Isaac node default). |
 
-## Code changes
+## cuAprilTags contract
 
-### 1. `race_auv_camera_pkg/package.xml`
+Header:
+`third_party/isaac_ros_nitros/isaac_ros_nitros/lib/cuapriltags/cuapriltags/cuAprilTags.h`
+(SPDX Apache-2.0).
+Library: `lib_aarch64_jetpack61/libcuapriltags.a` (aarch64) /
+`lib_x86_64_cuda_12_6/libcuapriltags.a` (x86_64). Both are Git LFS objects.
 
-- Remove the `python3-pupil-apriltags` `exec_depend`. (No replacement
-  rosdep key — install is documented in `Jetson.md` §0.)
+```c
+int nvCreateAprilTagsDetector(cuAprilTagsHandle* h, uint32_t w, uint32_t h,
+    uint32_t tile_size, cuAprilTagsFamily family,
+    const cuAprilTagsCameraIntrinsics_t* cam, float tag_dim);
+int cuAprilTagsDetect(cuAprilTagsHandle h, const cuAprilTagsImageInput_t* in,
+    cuAprilTagsID_t* out, uint32_t* n, uint32_t max_tags, CUstream_st* stream);
+int cuAprilTagsDestroy(cuAprilTagsHandle h);
+```
 
-### 2. `race_auv_camera_pkg/race_auv_camera_pkg/apriltag_processor.py`
+* Input image must be **undistorted** with type `uchar3` (BGR, 3 bytes/px).
+* Pose is solved inside the library from `cam` + `tag_dim`; `translation` is in
+  the same units as `tag_dim`; `orientation[9]` is column-major.
+* `cuAprilTagsID_t` is 88 bytes on the host (`float2` members are 8-byte
+  aligned). The shim flattens everything so Python never mirrors this layout,
+  and `static_assert(sizeof(cuAprilTagsID_t) == 88)` guards ABI drift.
+* Only `NVAT_TAG36H11` is supported.
+* Corner order may differ from `apriltag3`'s `lb-rb-rt-lt`; only drawing uses
+  corners, so there is no consumer impact.
 
-- Replace `from pupil_apriltags import Detector` with `from apriltag import apriltag`.
-- Replace the existing `AprilTagDetector` class:
+## Implementation
+
+### 0. Prerequisites (Jetson, one-time)
+
+* JetPack 7.2 with CUDA toolkit (`cudart`) and `cmake`.
+* `git-lfs` (required: `.a` files are LFS objects; a bare clone yields a
+  132-byte pointer).
+
+### 1. Submodule + bootstrap
+
+In the `race_auv` repo (branch `jazzy-devel-new-apriltag`):
+
+```bash
+git submodule add -b release-4.6 \
+    https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_nitros.git \
+    third_party/isaac_ros_nitros
+```
+
+A full checkout would download every LFS blob in that repo (cuVSLAM, cuMotion,
+hundreds of MB), so add `scripts/setup_third_party.sh`:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+SM="third_party/isaac_ros_nitros"
+command -v git-lfs >/dev/null || { echo "install git-lfs" >&2; exit 1; }
+git submodule update --init --no-checkout "$SM"
+git -C "$SM" sparse-checkout init --cone
+git -C "$SM" sparse-checkout set isaac_ros_nitros/lib/cuapriltags
+git -C "$SM" checkout
+git -C "$SM" lfs pull --include="isaac_ros_nitros/lib/cuapriltags/**"
+```
+
+Every fresh clone runs this before building; documented in `Jetson.md`.
+
+### 2. New ament_cmake package `race_auv_apriltag_cuda/`
+
+Sibling of `race_auv_camera_pkg` at the repo root (nested compiled packages
+inside an `ament_python` package are avoided):
+
+```
+race_auv_apriltag_cuda/
+|- CMakeLists.txt
+|- package.xml
+|- include/race_auv_apriltag_cuda/cuapriltags_shim.h
+|- src/cuapriltags_shim.cpp
+```
+
+`CMakeLists.txt`:
+
+* `find_package(ament_cmake REQUIRED)` and `find_package(CUDAToolkit REQUIRED)`.
+* `CUAPRILTAGS_ROOT` cache var, default
+  `${CMAKE_CURRENT_SOURCE_DIR}/../third_party/isaac_ros_nitros/isaac_ros_nitros/lib/cuapriltags`.
+* Library dir: `lib_aarch64_jetpack61` on aarch64, `lib_x86_64_cuda_12_6` on
+  x86_64. `FATAL_ERROR` when `${libdir}/libcuapriltags.a` is missing, with a
+  message pointing at the bootstrap script (so a missing `git lfs pull` is
+  obvious).
+* `add_library(race_auv_apriltag_cuda SHARED src/cuapriltags_shim.cpp)`,
+  include dirs `${CUAPRILTAGS_ROOT}/cuapriltags` + `${CUDAToolkit_INCLUDE_DIRS}`,
+  link `"${libdir}/libcuapriltags.a"` + `CUDA::cudart`.
+* Install the shared library to `share/race_auv_apriltag_cuda/lib/` so Python
+  resolves it through `get_package_share_directory` (no `LD_LIBRARY_PATH`), and
+  the header to `include/`.
+
+`package.xml`: `ament_cmake` buildtool only; CUDA comes from JetPack (there is
+no portable rosdep key for the toolkit).
+
+Shim API (`cuapriltags_shim.h`):
+
+```c
+void* race_at_create(int w, int h, int tile_size, float tag_size,
+                     float fx, float fy, float cx, float cy);
+int   race_at_detect(void* handle, const uint8_t* host_bgr, size_t pitch,
+                     int w, int h, int max_tags,
+                     uint16_t* out_ids,
+                     float* out_corners,      /* 8 * max_tags: x,y per corner */
+                     float* out_orientation,  /* 9 * max_tags, column-major */
+                     float* out_translation,  /* 3 * max_tags */
+                     int* out_count);
+void  race_at_destroy(void* handle);
+const char* race_at_last_error(void);
+```
+
+`cuapriltags_shim.cpp`:
+
+* Opaque state: `cuAprilTagsHandle`, `uchar3* d_buf` (single `cudaMalloc` at
+  `w*h*3`, reused every frame), dimensions, `std::vector<cuAprilTagsID_t>`.
+* `race_at_create`: `cudaMalloc` + `nvCreateAprilTagsDetector` with
+  `NVAT_TAG36H11`, the intrinsics and `tag_size`; returns `nullptr` and sets the
+  error string on failure.
+* `race_at_detect`: `cudaMemcpy2D` H2D (`pitch = w*3`), fill
+  `cuAprilTagsImageInput_t`, call `cuAprilTagsDetect(..., /*stream=*/0)`, then
+  flatten ids / corners / column-major orientation / translation and the count
+  into the caller's arrays.
+* `race_at_destroy`: `cuAprilTagsDestroy` + `cudaFree`.
+* Thread-local error string updated by every entry point; nonzero status is
+  surfaced to Python.
+* `static_assert(sizeof(cuAprilTagsID_t) == 88, "...");`
+
+### 3. `race_auv_camera_pkg/race_auv_camera_pkg/apriltag_cuda.py`
+
+`CuAprilTagDetector` mirrors `AprilTagDetector`'s public surface:
+
+```python
+class CuAprilTagDetector:
+    def __init__(self, family, id_to_size, camera_intrinsics, image_size,
+                 logger, nominal_size=0.125, tile_size=4, max_tags=64): ...
+    def detect(self, bgr): ...                    # same dicts as AprilTagDetector
+    def annotate(self, image, detections): ...    # delegates to shared annotator
+```
+
+* Loads `librace_auv_apriltag_cuda.so` from
+  `get_package_share_directory("race_auv_apriltag_cuda")/lib/` via
+  `ctypes.CDLL`.
+* Allocates the output buffers once (`uint16[64]`, `float[8*64]`,
+  `float[9*64]`, `float[3*64]`, `c_int`).
+* `detect`:
+  * `bgr = np.ascontiguousarray(bgr)`; pass `bgr.ctypes.data` and
+    `pitch = w*3`.
+  * Nonzero status -> log and return `[]`.
+  * Per returned tag: drop when `(family, id)` is not in `id_to_size`;
+    `R = np.asarray(orientation).reshape(3, 3, order="F")`;
+    `t = translation * (size / nominal_size)`; build `T`; sanitize via
+    `is_bad_rotation` / `sanitize_rotation`; set `bad_pose` when recovery
+    fails or values are non-finite.
+  * `corners` returned as `4x2 float32`; `size` included for axis length.
+* Exposes `camera_matrix` / `dist_coeffs` exactly like `AprilTagDetector` so
+  the node's `annotate(...)` call site is unchanged.
+* Import is lazy in `apriltag_detector_node._build_pipeline`, so a workspace
+  without the CUDA package still runs the `python` backend.
+
+### 4. `apriltag_processor.py` -- shared annotation
+
+* Extract `AprilTagDetector.annotate` + `_draw_bad_pose` +
+  `_draw_label_block` into a module-level
+  `annotate_detections(image, detections, camera_matrix, dist_coeffs, logger)`.
+* `AprilTagDetector.annotate` delegates to it (no behavior change).
+* `apriltag_cuda.py` imports the same function, so boxes, axes and labels stay
+  pixel-identical between backends.
+
+### 5. `apriltag_detector_node.py`
+
+* New params: `detector_backend` (`"python"` default; YAML sets `"cuda"`),
+  `cuda_nominal_size` (0.125), `cuda_tile_size` (4), `cuda_max_tags` (64).
+* `_build_pipeline`:
+  * Keep the rectifier and `process_scale` math as-is. The CUDA detector is
+    created for the **processed** image size, so `process_scale < 1` still
+    works; recommend `process_scale: 1.0` for the CUDA backend to regain
+    full-resolution range (GPU detect is cheap).
+  * `detector_backend == "cuda"` -> `CuAprilTagDetector(...)`, else
+    `AprilTagDetector(...)` (today's path).
+  * Log the chosen backend in the startup banner.
+* `_process_frame`: branch only on what is fed to `detect()`:
 
   ```python
-  class AprilTagDetector:
-      def __init__(
-          self,
-          families: Sequence[str],
-          id_to_size: Dict[Tuple[str, int], float],
-          camera_intrinsics: dict,
-          camera_distortion: Sequence[float],
-          image_size: dict,
-          logger,
-          detector_params: dict,
-      ):
-          self.logger = logger
-          self._detectors: Dict[str, object] = {}
-          self._id_to_size: Dict[Tuple[str, int], float] = {
-              (str(f), int(i)): float(s)
-              for (f, i), s in id_to_size.items()
-          }
-          fx = float(camera_intrinsics["fx"])
-          fy = float(camera_intrinsics["fy"])
-          cx = float(camera_intrinsics["cx"])
-          cy = float(camera_intrinsics["cy"])
-          self._camera_params = (fx, fy, cx, cy)
-
-          for fam in families:
-              try:
-                  self._detectors[fam] = apriltag(
-                      family=fam,
-                      threads=int(detector_params["nthreads"]),
-                      decimate=float(detector_params["quad_decimate"]),
-                      blur=float(detector_params["quad_sigma"]),
-                      refine_edges=bool(detector_params["refine_edges"]),
-                      maxhamming=2,
-                  )
-                  self.logger.info(
-                      f"apriltag3 ready: family='{fam}' "
-                      f"image={image_size['img_width']}x{image_size['img_height']} "
-                      f"params={dict(detector_params)}"
-                  )
-              except Exception as e:
-                  self.logger.error(f"apriltag3 init failed for {fam}: {e}")
-
-      def detect(self, gray_image: np.ndarray) -> list[dict]:
-          if gray_image is None:
-              self.logger.warn("Received a null image for AprilTag detection.")
-              return []
-          out: list[dict] = []
-          fx, fy, cx, cy = self._camera_params
-          for family, det in self._detectors.items():
-              try:
-                  raw = det.detect(gray_image)
-              except Exception as e:
-                  self.logger.warn(
-                      f"apriltag3 ({family}) detect failed: {e}; skipping."
-                  )
-                  continue
-              for d in raw:
-                  try:
-                      tag_id = int(d["id"])
-                  except (KeyError, TypeError, ValueError):
-                      continue
-                  key = (family, tag_id)
-                  if key not in self._id_to_size:
-                      continue
-                  size = self._id_to_size[key]
-                  try:
-                      pose = det.estimate_tag_pose(d, size, fx, fy, cx, cy)
-                      R_mat = np.asarray(pose["R"], dtype=np.float64)
-                      t_vec = np.asarray(pose["t"], dtype=np.float64).reshape(3)
-                      T = np.eye(4)
-                      T[:3, :3] = R_mat
-                      T[:3, 3] = t_vec
-                      bad_pose = False
-                  except Exception:
-                      T = np.eye(4)
-                      bad_pose = True
-                  out.append({
-                      "family": family,
-                      "tag_id": tag_id,
-                      "T": T,
-                      "corners": np.asarray(d["lb-rb-rt-lt"], dtype=np.float32),
-                      "bad_pose": bad_pose,
-                  })
-          return out
+  if self._detector_backend == "cuda":
+      detections = detector.detect(small)                            # BGR
+  else:
+      detections = detector.detect(cv2.cvtColor(small, cv2.COLOR_BGR2GRAY))
   ```
 
-- Drop `_normalize_family` — the upstream wrapper's `detect()` does not return `tag_family`; the family is implicit in which detector instance fired.
-- `annotate()`: re-enable the `cv2.drawFrameAxes` block (kept live; axis length is now per-detection since the same detector can serve mixed sizes).
-- Detection dict now includes `"size"` so `annotate()` can size axes per tag (the old per-bucket `self.tag_size` is gone).
+  Everything else (corner upscale, `min_edge_dist`, sanitize, annotate,
+  crosshair, JPEG, `Detection3DArray`, fuser) is untouched.
+* `tags_override` / YAML tag loading unchanged.
 
-### 3. `race_auv_camera_pkg/race_auv_camera_pkg/apriltag_geom.py`
+### 6. Config
 
-- **No change.** `estimate_tag_pose` lives in the C extension. Keep `sanitize_rotation`, `is_bad_rotation`, `solve_cam_to_base`, `matrix_to_pose_msg`, `matrix_to_transform_stamped`, `resolve_urdf_path`, `load_yaml_config`.
+`race_auv_bringup/config/apriltag.yaml`:
 
-### 4. `race_auv_camera_pkg/race_auv_camera_pkg/apriltag_detector_node.py`
+* Delete every `tag25h9` entry (global list and per-camera comments).
+* Add to `detector_defaults`:
+  `detector_backend: "cuda"`, `cuda_tile_size: 4`,
+  `cuda_nominal_size: 0.125`, `cuda_max_tags: 64`.
+* The historical `use_cuda` / `jpeg_backend` keys stay ignored; the new
+  `detector_backend` is the real switch.
 
-- Replace `_group_tags_by_family_size` with `_group_tags_by_family` returning `(per_family, id_to_size, sorted_families)`.
-- The `self._detectors: Dict[Tuple[str, float], AprilTagDetector]` field is gone; in its place a single `self._detector: Optional[AprilTagDetector] = None`.
-- In `_build_pipeline`: build one `AprilTagDetector(families=..., id_to_size=..., ...)`. Drop the loop over `(family, size)`. Child logger: `det_all` (no size suffix).
-- `_process_frame`: single call to `self._detector.detect(gray)`. The existing bad-rotation / SVD sanitize / publish paths stay.
-- `tags_override` parsing and YAML loading unchanged. `decode_sharpening` is dropped from `_detector_params_template`.
-- Top-of-file "Multi-family / multi-size tags" docstring updated.
+`race_auv_bringup/config/simulation/apriltag.yaml`:
 
-### 5. `race_auv_camera_pkg/Jetson.md`
+* Same 25h9 removal (sim tags become `tag36h11 @ {0.15, 0.05}`).
+* Keep `detector_backend: "python"` for the sim (optional `"cuda"` on the RTX
+  dev box; nominal size 0.15, rescale 0.05/0.15).
 
-- New section §0 "Install `apriltag3`" with the cmake build, the
-  `LD_LIBRARY_PATH` / `PYTHONPATH` exports, and the `ninja` alternative.
-  Updated from the plan's original `pip install git+...` recipe after
-  discovering the upstream repo has no `setup.py` / `pyproject.toml`.
+### 7. Launch
 
-## Files not changed
+`camera_apriltag.launch.py` and `simulation/apriltag_sim.launch.py` only need to
+forward the new params to `apriltag_detector_node`. No new nodes, no raw image
+topic, no separate container.
 
-- `race_auv_camera_pkg/race_auv_camera_pkg/apriltag_fuser_node.py`
-- `race_auv_camera_pkg/race_auv_camera_pkg/urdf_tag_parser.py`
-- `race_auv_camera_pkg/race_auv_camera_pkg/image_processing.py`
-- `race_auv_bringup/config/apriltag.yaml` and any launch files.
+### 8. `race_auv_camera_pkg/package.xml`
 
-(Note: `race_auv_camera_pkg/race_auv_camera_pkg/image_jpeg.py` was
-removed as part of the GPU-path cleanup. The earlier revision of this
-plan listed it under "Files not changed"; that reference is stale.)
+* Add `<exec_depend>race_auv_apriltag_cuda</exec_depend>`.
+* Add `<exec_depend>ament_index_python</exec_depend>` (used to locate the
+  shim `.so`).
+* `apriltag3` (`AprilRobotics/apriltag`) stays documented for the `python`
+  fallback only.
 
-## Risks (updated)
+### 9. `Jetson.md`
 
-- The `apriltag_pywrap.c` build on Jetson is the biggest unknown. If it breaks, `pupil_apriltags` remains a fallback path — `AprilTagDetector`'s surface is small enough that the swap is contained to `apriltag_processor.py`.
-- `estimate_tag_pose` and `cv2.SOLVEPNP_IPPE_SQUARE` use the same IPPE algorithm but can pick a different branch on near-degenerate tags. The fuser's joint Umeyama (or the post-hardening joint Umeyama + RANSAC) absorbs this; per-tag `T` still feeds `Detection3DArray` after the existing `is_bad_rotation` + `np.linalg.det > 0.5` checks at `apriltag_detector_node.py:657-666`.
-- The most recent JetPack 6.x image on Orin ships OpenCV without `NVCOMPRESS`. That is what motivated the GPU-path removal and is unrelated to this plan, but worth recording: anyone re-introducing a `cv2.cuda` path would hit the same wall.
+* Replace section 0 "Install `apriltag3`" with:
+  1. `git-lfs` + `scripts/setup_third_party.sh` (submodule bootstrap),
+  2. build command
+     (`colcon build --packages-up-to race_auv_apriltag_cuda race_auv_camera_pkg`),
+  3. note that `apriltag3` is only needed for the `python` fallback.
+* Update the per-stage timing table with the CUDA detect expectation (H2D copy
+  + GPU detect) once measured.
 
 ## Verification
 
-Visual only, per the locked-in decision:
-
-1. Launch the per-camera detector on the dock.
-2. Confirm the annotated `apriltag_detection/image` topic in Foxglove
-   shows bounding boxes + axis overlays + ID labels for every visible
-   tag (both families: `tag25h9 @ 0.21` and `tag36h11 @ {0.125, 0.04}`).
-3. Confirm `apriltag_detection/detections3d` reports one entry per
-   visible tag with a sensible pose.
-4. Confirm the multi-camera fuser's `object_base` TF tracks the dock
-   in Foxglove / rviz2 within typical tolerance.
-
-If any of (1)–(4) look wrong, fall back to debugging through the
-detector's child logger `det_all`.
+1. **Shim smoke test** (before node wiring): feed a known rectified BGR frame
+   through `race_at_*`; confirm ids, corners and poses are sane.
+2. **Parity**: run the same frame/tag with `detector_backend: python` and
+   `cuda`; compare `T` (expect only IPPE branch-level differences, no gross
+   scale errors).
+3. **Size rescale**: a 4 cm tag next to a 12.5 cm tag; translations must match
+   the Python backend within noise.
+4. **Topic contract**: `apriltag_detection/detections3d` and
+   `apriltag_detection/image` unchanged; the fuser still publishes
+   `race_station/dock_point`.
+5. **Performance**: 15 Hz per camera, `tegrastats` CPU headroom, detect-stage
+   timing logged.
 
 ## Risks
 
-- The `apriltag_pywrap.c` build on Jetson is the biggest unknown. If it breaks, `pupil_apriltags` remains a fallback path — `AprilTagDetector`'s surface is small enough that the swap is contained to `apriltag_processor.py`.
-- `estimate_tag_pose` and `cv2.SOLVEPNP_IPPE_SQUARE` use the same IPPE algorithm but can pick a different branch on near-degenerate tags. The fuser's joint Umeyama absorb this; per-tag `T` still feeds `Detection3DArray` after the existing `is_bad_rotation` + `np.linalg.det > 0.5` checks at `apriltag_detector_node.py:578-586`.
+* **aarch64 binary vintage**: 4.6 ships `lib_aarch64_jetpack61` (JetPack
+  6.1 / CUDA 12). JetPack 7.2 should run it per NVIDIA's own pairing, but the
+  link/run smoke test gates the approach. Fallback: `detector_backend: python`.
+* **Git LFS**: bandwidth quota and the `git-lfs` requirement; mitigated by the
+  sparse checkout bootstrap.
+* **Closed binary**: `libcuapriltags.a` is not open source; we reference it via
+  submodule and do not redistribute it.
+* **H2D copy**: `w*h*3` bytes per frame is unavoidable while rectification is
+  CPU; acceptable at 1600x1200 / 15 Hz.
+* **Pose branch differences** vs `apriltag3`; the fuser's weighted joint
+  Umeyama / RANSAC absorbs them.
+* **Fixed image size per detector**: `tag_size` and image dimensions are set at
+  creation; changing `process_scale` requires a node restart.
+* **Corner order** differs from `apriltag3`; annotation only, no consumer
+  impact.
+* Thread safety: one detector handle per node/camera; the shim is not
+  re-entrant and relies on the node's single executor thread per camera.
 
 ## Rollback
 
-Hard cutover: revert `apriltag_processor.py` + `apriltag_detector_node.py`
-+ `package.xml` + `apriltag.yaml` + `Jetson.md` + this plan file. The
-legacy `pupil_apriltags` dependency is no longer listed, so a rollback
-must restore `python3-pupil-apriltags` in `package.xml` and `decode_sharpening`
-in `apriltag.yaml` to land cleanly. No downstream code (fuser, URDF
-parser, image processing) is touched.
+* Set `detector_backend: "python"` in `apriltag.yaml` -- no code revert needed.
+* Optional full removal: drop the submodule, `race_auv_apriltag_cuda/`,
+  `apriltag_cuda.py`, and the `package.xml` `exec_depend`.
