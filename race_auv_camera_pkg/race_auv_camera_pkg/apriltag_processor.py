@@ -1,5 +1,12 @@
 """Multi-family AprilTag detection backed by ``AprilRobotics/apriltag``.
 
+This module also hosts :func:`annotate_detections`, the shared drawing
+routine used by both the ``python`` backend (:class:`AprilTagDetector`)
+and the ``cuda`` backend (``apriltag_cuda.CuAprilTagDetector``). The
+``apriltag3`` Python binding is imported lazily in
+:class:`AprilTagDetector.__init__`, so the CUDA backend can import this
+module on hosts where ``apriltag3`` is not installed.
+
 A single :class:`AprilTagDetector` owns one ``apriltag.apriltag``
 instance *per family* configured for it. Because the upstream
 ``detect()`` call also does not span families in one pass, we run
@@ -36,11 +43,10 @@ tag's centre).
 
 from __future__ import annotations
 
-from typing import Dict, Sequence, Tuple
+from typing import Any, Dict, Sequence, Tuple
 
 import cv2
 import numpy as np
-from apriltag import apriltag
 from scipy.spatial.transform import Rotation as R
 
 
@@ -181,10 +187,20 @@ class AprilTagDetector:
         # requires one quad-scan per family. Within a single family,
         # tags of mixed sizes share that one scan: per-tag size is
         # looked up post-decode and fed into ``estimate_tag_pose``.
-        self._detectors: Dict[str, apriltag] = {}
+        try:
+            from apriltag import apriltag as _apriltag_factory
+        except ImportError as e:
+            raise RuntimeError(
+                "The 'python' AprilTag backend requires the apriltag3 Python "
+                "binding (AprilRobotics/apriltag). Install it (for example "
+                "'sudo apt install python3-apriltag') or set "
+                "detector_backend: 'cuda' in the detector YAML."
+            ) from e
+
+        self._detectors: Dict[str, Any] = {}
         for fam in self._families:
             try:
-                self._detectors[fam] = apriltag(
+                self._detectors[fam] = _apriltag_factory(
                     family=fam,
                     threads=int(detector_params.get("nthreads", 4)),
                     decimate=float(detector_params.get("quad_decimate", 2.0)),
@@ -312,107 +328,151 @@ class AprilTagDetector:
         np.ndarray
             ``image``, returned for chaining convenience.
         """
-        if image is None:
-            return image
+        return annotate_detections(
+            image, detections, self.camera_matrix, self.dist_coeffs, self.logger,
+        )
 
-        for det in detections:
-            family = det["family"]
-            tag_id = det["tag_id"]
-            corners = det["corners"].astype(int)
-            T = det["T"]
-            bad = det["bad_pose"]
-            tag_size = float(det.get("size", 0.0))
+# =============================================================================
+# Shared annotation
+# =============================================================================
+def annotate_detections(
+    image: np.ndarray,
+    detections: list[dict],
+    camera_matrix: np.ndarray,
+    dist_coeffs: np.ndarray,
+    logger,
+) -> np.ndarray:
+    """Draw bounding boxes, axes, and id labels for ``detections`` in-place.
 
-            if bad:
-                self._draw_bad_pose(image, corners, family, tag_id)
-                continue
+    Shared by :class:`AprilTagDetector` (python backend) and
+    ``apriltag_cuda.CuAprilTagDetector`` (CUDA backend) so the two
+    backends produce pixel-identical overlays.
 
-            tvec = T[:3, 3]
-            Rmat = T[:3, :3]
-            try:
-                rvec, _ = cv2.Rodrigues(Rmat)
-            except (ValueError, cv2.error) as e:
-                self.logger.warn(
-                    f"Could not convert rotation for {family}:{tag_id}; "
-                    f"marking as bad pose. Error: {e}"
-                )
-                self._draw_bad_pose(image, corners, family, tag_id)
-                continue
+    Green boxes indicate a usable pose; red boxes indicate a pose that
+    was rejected (very rare). The label block above each box shows:
 
-            roll, pitch, yaw = _rotation_matrix_to_euler_xyz(Rmat)
+    * ``ID: <family>:<id>``           (magenta, bigger)
+    * ``xyz: (x, y, z)``              (yellow, metres)
+    * ``rpy: (roll, pitch, yaw)``     (yellow, degrees)
 
-            cv2.polylines(
-                image, [corners], isClosed=True,
-                color=_BOX_OK, thickness=_LINE_THICKNESS,
-            )
+    The 3D axes are drawn via ``cv2.drawFrameAxes`` (RGB = X, Y, Z) with
+    length ``tag_size / 2`` so they stay compact. RPY / axes are only
+    drawn for usable poses.
 
-            axis_length = tag_size / _AXIS_LENGTH_DIVISOR if tag_size > 0 else 0.05
-            cv2.drawFrameAxes(
-                image,
-                self.camera_matrix,
-                self.dist_coeffs,
-                rvec,
-                tvec,
-                axis_length,
-            )
+    Parameters
+    ----------
+    image
+        BGR image to draw on (modified in place).
+    detections
+        List of dicts as returned by each backend's ``detect``.
+        ``corners`` must already be in this image's coordinate system.
+    camera_matrix, dist_coeffs
+        Pinhole model used to project the tag axes.
+    logger
+        A ``rclpy``-compatible logger.
 
-            anchor_x = int(corners[:, 0].min())
-            anchor_y = int(corners[:, 1].min()) - _LABEL_STRIDE
-            lines = [
-                (f"ID: {family}:{tag_id}",  _TEXT_PRIMARY,   _FONT_SCALE_BIG,  _TEXT_THICKNESS),
-                (f"xyz: ({tvec[0]:.2f}, {tvec[1]:.2f}, {tvec[2]:.2f})",
-                                                _TEXT_SECONDARY, _FONT_SCALE_SMALL, _TEXT_THICKNESS),
-                (f"rpy: ({roll:.0f}, {pitch:.0f}, {yaw:.0f})",
-                                                _TEXT_SECONDARY, _FONT_SCALE_SMALL, _TEXT_THICKNESS),
-            ]
-            self._draw_label_block(image, anchor_x, anchor_y, lines)
-
+    Returns
+    -------
+    np.ndarray
+        ``image``, returned for chaining convenience.
+    """
+    if image is None:
         return image
 
-    # =====================================================================
-    # Drawing helpers
-    # =====================================================================
-    @staticmethod
-    def _draw_bad_pose(
-        image: np.ndarray,
-        corners: np.ndarray,
-        family: str,
-        tag_id: int,
-    ) -> None:
-        """Draw the red box + id label used when a detection's pose is rejected.
+    for det in detections:
+        family = det["family"]
+        tag_id = det["tag_id"]
+        corners = det["corners"].astype(int)
+        T = det["T"]
+        bad = det["bad_pose"]
+        tag_size = float(det.get("size", 0.0))
 
-        Called from :meth:`annotate` when ``det["bad_pose"]`` is true
-        or when :func:`cv2.Rodrigues` fails on the rotation matrix.
-        No axes / xyz / rpy are drawn because we don't have a usable
-        pose.
-        """
+        if bad:
+            _draw_bad_pose(image, corners, family, tag_id)
+            continue
+
+        tvec = T[:3, 3]
+        Rmat = T[:3, :3]
+        try:
+            rvec, _ = cv2.Rodrigues(Rmat)
+        except (ValueError, cv2.error) as e:
+            logger.warn(
+                f"Could not convert rotation for {family}:{tag_id}; "
+                f"marking as bad pose. Error: {e}"
+            )
+            _draw_bad_pose(image, corners, family, tag_id)
+            continue
+
+        roll, pitch, yaw = _rotation_matrix_to_euler_xyz(Rmat)
+
         cv2.polylines(
             image, [corners], isClosed=True,
-            color=_BOX_BAD, thickness=_LINE_THICKNESS,
+            color=_BOX_OK, thickness=_LINE_THICKNESS,
         )
-        anchor = tuple(int(v) for v in corners[0])
-        cv2.putText(
+
+        axis_length = tag_size / _AXIS_LENGTH_DIVISOR if tag_size > 0 else 0.05
+        cv2.drawFrameAxes(
             image,
-            f"ID: {family}:{tag_id} (Bad Pose)",
-            (anchor[0], anchor[1] - 5),
-            _FONT, 0.7, _BOX_BAD, 2,
+            camera_matrix,
+            dist_coeffs,
+            rvec,
+            tvec,
+            axis_length,
         )
 
-    @staticmethod
-    def _draw_label_block(
-        image: np.ndarray,
-        x: int,
-        start_y: int,
-        lines: list[tuple[str, tuple[int, int, int], float, int]],
-    ) -> None:
-        """Stack ``lines`` vertically starting at ``(x, start_y)``.
+        anchor_x = int(corners[:, 0].min())
+        anchor_y = int(corners[:, 1].min()) - _LABEL_STRIDE
+        lines = [
+            (f"ID: {family}:{tag_id}",  _TEXT_PRIMARY,   _FONT_SCALE_BIG,  _TEXT_THICKNESS),
+            (f"xyz: ({tvec[0]:.2f}, {tvec[1]:.2f}, {tvec[2]:.2f})",
+                                            _TEXT_SECONDARY, _FONT_SCALE_SMALL, _TEXT_THICKNESS),
+            (f"rpy: ({roll:.0f}, {pitch:.0f}, {yaw:.0f})",
+                                            _TEXT_SECONDARY, _FONT_SCALE_SMALL, _TEXT_THICKNESS),
+        ]
+        _draw_label_block(image, anchor_x, anchor_y, lines)
 
-        Each line is ``(text, color_bgr, font_scale, thickness)``.
-        Each subsequent line is placed ``_LABEL_STRIDE`` pixels below
-        the previous one. Anti-aliased (``cv2.LINE_AA``) for legibility
-        on the JPEG-compressed output.
-        """
-        y = start_y
-        for text, color, scale, thick in lines:
-            cv2.putText(image, text, (x, y), _FONT, scale, color, thick, cv2.LINE_AA)
-            y += _LABEL_STRIDE
+    return image
+
+
+def _draw_bad_pose(
+    image: np.ndarray,
+    corners: np.ndarray,
+    family: str,
+    tag_id: int,
+) -> None:
+    """Draw the red box + id label used when a detection's pose is rejected.
+
+    Called from :func:`annotate_detections` when ``det["bad_pose"]`` is
+    true or when :func:`cv2.Rodrigues` fails on the rotation matrix. No
+    axes / xyz / rpy are drawn because we don't have a usable pose.
+    """
+    cv2.polylines(
+        image, [corners], isClosed=True,
+        color=_BOX_BAD, thickness=_LINE_THICKNESS,
+    )
+    anchor = tuple(int(v) for v in corners[0])
+    cv2.putText(
+        image,
+        f"ID: {family}:{tag_id} (Bad Pose)",
+        (anchor[0], anchor[1] - 5),
+        _FONT, 0.7, _BOX_BAD, 2,
+    )
+
+
+def _draw_label_block(
+    image: np.ndarray,
+    x: int,
+    start_y: int,
+    lines: list[tuple[str, tuple[int, int, int], float, int]],
+) -> None:
+    """Stack ``lines`` vertically starting at ``(x, start_y)``.
+
+    Each line is ``(text, color_bgr, font_scale, thickness)``. Each
+    subsequent line is placed ``_LABEL_STRIDE`` pixels below the
+    previous one. Anti-aliased (``cv2.LINE_AA``) for legibility on the
+    JPEG-compressed output.
+    """
+    y = start_y
+    for text, color, scale, thick in lines:
+        cv2.putText(image, text, (x, y), _FONT, scale, color, thick, cv2.LINE_AA)
+        y += _LABEL_STRIDE

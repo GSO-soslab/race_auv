@@ -41,15 +41,29 @@ Two sources for the tag list:
 
 Hardware acceleration
 ---------------------
-Hardware acceleration via ``cv2.cuda`` and NVIDIA ``nvjpeg`` was
-removed from this package because neither worked reliably on the
-target platforms (Jetson Orin + generic Linux): the PyPI OpenCV
-wheels do not include CUDA, and the JetPack system package in the
-version we target either ships without NVCOMPRESS or without the
-required CUDA runtime. The whole pipeline now runs on the CPU. The
-``detector_defaults:`` YAML block may still carry the historical
-``use_cuda`` and ``jpeg_backend`` keys -- they are silently ignored
-and a single warning is logged at startup so the operator knows.
+Image-pipeline acceleration via ``cv2.cuda`` and NVIDIA ``nvjpeg``
+remains removed from this package: neither worked reliably on the
+target platforms (Jetson Orin + generic Linux), because the PyPI
+OpenCV wheels do not include CUDA and the JetPack system package in
+the version we target either ships without NVCOMPRESS or without the
+required CUDA runtime. The default image path is therefore CPU-only:
+``cv_bridge`` decode, the CPU ``ImageRectifier`` and ``cv2.imencode``.
+
+Two optional GPU paths are available:
+
+* ``detector_backend: "cuda"`` runs tag *detection* on the GPU with an
+  in-process cuAprilTags backend (``race_auv_apriltag_cuda``). It is
+  imported lazily and decodes ``tag36h11`` only; ``"python"``
+  (apriltag3) is the default and supports every family.
+* ``image_pipeline: "cuda"`` (requires ``image_transport:
+  "compressed"`` and ``detector_backend: "cuda"``) replaces the whole
+  image path with in-process NVIDIA stages: nvjpeg decode, VPI CUDA
+  fisheye rectify and nvjpeg encode. The detection-resolution frame
+  stays in device memory and is fed straight to cuAprilTags; only the
+  full-resolution rectified frame is copied back for annotation.
+
+The historical ``use_cuda`` / ``jpeg_backend`` keys are still read but
+only logged -- they no longer change behaviour.
 
 Per-camera performance knobs (CPU pipeline):
 
@@ -220,6 +234,24 @@ class AprilTagDetectorNode(Node):
         # dropped (see ``_filter_edge_clipped``).
         self.declare_parameter("min_edge_dist", 10)
 
+        # Detector backend: "python" (apriltag3 CPU, all families) or
+        # "cuda" (in-process cuAprilTags, tag36h11 only).
+        self.declare_parameter("detector_backend", "python")
+        # CUDA backend knobs (ignored by the python backend).
+        self.declare_parameter("cuda_nominal_size", 0.125)
+        self.declare_parameter("cuda_tile_size", 4)
+        self.declare_parameter("cuda_max_tags", 64)
+
+        # Image-stage backend:
+        #   "cpu"  -- cv_bridge/cv2 decode + CPU rectify + cv2.imencode
+        #   "cuda" -- nvjpeg decode + VPI CUDA rectify + nvjpeg encode.
+        #             Requires image_transport="compressed" and
+        #             detector_backend="cuda"; ignored (with a warning)
+        #             otherwise.
+        self.declare_parameter("image_pipeline", "cpu")
+        # VPI warp grid spacing for the GPU rectifier (power of two).
+        self.declare_parameter("gpu_rectify_interval", 4)
+
         # Intrinsics fallback (used when ``info_topic`` is empty).
         self.declare_parameter("intrinsics.fx", 0.0)
         self.declare_parameter("intrinsics.fy", 0.0)
@@ -239,11 +271,23 @@ class AprilTagDetectorNode(Node):
         self._latest_bgr: Optional[np.ndarray] = None
         self._latest_stamp = None
         self._info_msg: Optional[CameraInfo] = None
-        # The single ``AprilTagDetector`` instance. It owns one
-        # ``apriltag.apriltag(family=...)`` per configured family and
-        # looks up per-tag size from ``_group_tags_by_family`` after
+        # The single detector instance (python ``AprilTagDetector`` or
+        # CUDA ``CuAprilTagDetector``). Both expose detect()/annotate()
+        # and look up per-tag size from ``_group_tags_by_family`` after
         # decode. ``None`` until ``_build_pipeline`` runs.
-        self._detector: Optional[AprilTagDetector] = None
+        self._detector: Optional[object] = None
+        # Selected backend name ("python" or "cuda"); decides whether
+        # _process_frame feeds grayscale or BGR to the detector.
+        self._detector_backend: str = "python"
+        # GPU image pipeline (nvjpeg/VPI); None on the CPU image path.
+        self._gpu_pipeline: Optional[object] = None
+        # Selected image-stage backend ("cpu" or "cuda").
+        self._image_pipeline: str = "cpu"
+        # Transport selected in __init__ ("raw" or "compressed").
+        self._image_transport: str = "raw"
+        # Latest compressed frame bytes, kept undecoded on the GPU path
+        # and decoded once per tick instead of once per camera frame.
+        self._latest_jpeg: Optional[bytes] = None
         # The single CPU ``ImageRectifier`` instance.
         self._rectifier: Optional[object] = None
         self._rectifier_backend: str = "cpu"
@@ -270,6 +314,7 @@ class AprilTagDetectorNode(Node):
 
         # ============================================================ subscriptions
         transport = str(self.get_parameter("image_transport").value or "raw").lower()
+        self._image_transport = transport
         image_topic = str(self.get_parameter("image_topic").value or "")
         info_topic = str(self.get_parameter("info_topic").value or "")
         if not image_topic:
@@ -508,10 +553,48 @@ class AprilTagDetectorNode(Node):
         4. Cache the ``jpeg_quality`` parameter (the encode itself is
            done inline by :meth:`_publish_annotated` with
            :func:`cv2.imencode`).
-        5. Build one ``AprilTagDetector`` covering every configured
-           family; per-tag size is looked up after decode.
+        5. Build the selected detector backend (python or cuda); per-tag
+           size is looked up after decode.
         6. Print the startup banner (per-stage backend / scale / quality).
         """
+        # --- 0. Resolve backends ---------------------------------------------
+        backend = str(
+            self.get_parameter("detector_backend").value or "python"
+        ).lower()
+        if backend not in ("python", "cuda"):
+            self.get_logger().warn(
+                f"Unknown detector_backend={backend!r}; falling back to 'python'."
+            )
+            backend = "python"
+        self._detector_backend = backend
+
+        image_pipeline = str(
+            self.get_parameter("image_pipeline").value or "cpu"
+        ).lower()
+        if image_pipeline not in ("cpu", "cuda"):
+            self.get_logger().warn(
+                f"Unknown image_pipeline={image_pipeline!r}; using 'cpu'."
+            )
+            image_pipeline = "cpu"
+        if image_pipeline == "cuda":
+            if self._image_transport != "compressed":
+                self.get_logger().warn(
+                    "image_pipeline='cuda' requires image_transport='compressed'; "
+                    "using the CPU image pipeline."
+                )
+                image_pipeline = "cpu"
+            elif backend != "cuda":
+                self.get_logger().warn(
+                    "image_pipeline='cuda' requires detector_backend='cuda'; "
+                    "using the CPU image pipeline."
+                )
+                image_pipeline = "cpu"
+        self._image_pipeline = image_pipeline
+
+        if self._image_pipeline == "cuda":
+            self._build_gpu_pipeline(K, D, width, height, is_fisheye)
+            return
+
         # --- 1. process_scale ------------------------------------------------
         scale = float(self.get_parameter("process_scale").value or 1.0)
         if scale <= 0.0 or scale > 1.0:
@@ -562,30 +645,133 @@ class AprilTagDetectorNode(Node):
         self._jpeg_quality = int(self.get_parameter("jpeg_quality").value or 80)
         self._min_edge_dist = _as_int(self.get_parameter("min_edge_dist").value, 10)
 
-        # --- 5. Single detector covering every configured family ---------
-        # One ``AprilTagDetector`` owns one ``apriltag.apriltag(family=...)``
-        # per family; per-tag size is looked up after decode from
-        # ``id_to_size``. The old ``(family, size)`` bucket fan-out is
-        # gone -- one quad-scan per family covers every size in it.
+        # --- 5. Build the selected detector backend -------------------------
+        # Both backends expose the same detect()/annotate() surface and
+        # look up per-tag size from ``id_to_size`` after decode. The
+        # backend name was resolved in step 0.
         per_family, id_to_size, families = self._group_tags_by_family()
         child_logger = self.get_logger().get_child("det_all")
-        self._detector = AprilTagDetector(
-            families=families,
-            id_to_size=id_to_size,
-            camera_intrinsics=small_K,
-            camera_distortion=new_D.tolist(),
-            image_size=small_size,
-            logger=child_logger,
-            detector_params=dict(self._detector_params_template),
-        )
+
+        if backend == "cuda":
+            # Lazy import: the CUDA package is an optional dependency for
+            # hosts that only run the python backend.
+            from .apriltag_cuda import CuAprilTagDetector
+
+            self._detector = CuAprilTagDetector(
+                id_to_size=id_to_size,
+                family="tag36h11",
+                camera_intrinsics=small_K,
+                camera_distortion=new_D.tolist(),
+                image_size=small_size,
+                logger=child_logger,
+                nominal_size=float(
+                    self.get_parameter("cuda_nominal_size").value or 0.125
+                ),
+                tile_size=_as_int(self.get_parameter("cuda_tile_size").value, 4),
+                max_tags=_as_int(self.get_parameter("cuda_max_tags").value, 64),
+            )
+        else:
+            self._detector = AprilTagDetector(
+                families=families,
+                id_to_size=id_to_size,
+                camera_intrinsics=small_K,
+                camera_distortion=new_D.tolist(),
+                image_size=small_size,
+                logger=child_logger,
+                detector_params=dict(self._detector_params_template),
+            )
 
         # --- 6. Startup banner ----------------------------------------------
         # Single-line, easy-to-grep summary of what was actually built.
         self.get_logger().info(
-            "=== Pipeline (CPU) ===\n"
+            "=== Pipeline ===\n"
+            f"  detector backend: {backend}\n"
             f"  rectify backend : {self._rectifier_backend}\n"
             f"  jpeg   backend  : cpu (cv2.imencode)\n"
             f"  process_scale   : {self._process_scale}\n"
+            f"  jpeg_quality    : {self._jpeg_quality}\n"
+            f"  min_edge_dist   : {self._min_edge_dist}px\n"
+            f"  families        : {families} ({sum(len(v) for v in per_family.values())} tags)"
+        )
+
+    def _build_gpu_pipeline(
+        self,
+        K: np.ndarray,
+        D: np.ndarray,
+        width: int,
+        height: int,
+        is_fisheye: bool,
+    ) -> None:
+        """Build the nvjpeg/VPI image pipeline and the CUDA detector.
+
+        Called from :meth:`_build_pipeline` when ``image_pipeline`` is
+        ``"cuda"``. The rectifier geometry is taken from the same CPU
+        ``ImageRectifier`` the CPU path uses, so display output is
+        identical; the detection-resolution rectification is a scaled
+        variant of it.
+        """
+        from .apriltag_cuda import CuAprilTagDetector, GpuImagePipeline
+
+        scale = float(self.get_parameter("process_scale").value or 1.0)
+        if scale <= 0.0 or scale > 1.0:
+            self.get_logger().warn(
+                f"process_scale={scale} out of range (0, 1]; clamping to 1.0."
+            )
+            scale = 1.0
+        self._process_scale = scale
+        self._jpeg_quality = int(self.get_parameter("jpeg_quality").value or 80)
+        self._min_edge_dist = _as_int(self.get_parameter("min_edge_dist").value, 10)
+
+        self._gpu_pipeline = GpuImagePipeline(
+            camera_intrinsics={
+                "fx": float(K[0, 0]),
+                "fy": float(K[1, 1]),
+                "cx": float(K[0, 2]),
+                "cy": float(K[1, 2]),
+            },
+            camera_distortion=D.tolist(),
+            image_size={"img_width": width, "img_height": height},
+            logger=self.get_logger().get_child("gpu_image"),
+            is_fisheye=is_fisheye,
+            process_scale=scale,
+            rectify_interval=_as_int(
+                self.get_parameter("gpu_rectify_interval").value, 4
+            ),
+        )
+
+        per_family, id_to_size, families = self._group_tags_by_family()
+        child_logger = self.get_logger().get_child("det_all")
+        detect_K = self._gpu_pipeline.detect_intrinsics
+        self._detector = CuAprilTagDetector(
+            id_to_size=id_to_size,
+            family="tag36h11",
+            camera_intrinsics={
+                "fx": float(detect_K["fx"]),
+                "fy": float(detect_K["fy"]),
+                "cx": float(detect_K["cx"]),
+                "cy": float(detect_K["cy"]),
+            },
+            camera_distortion=[0.0] * 5,
+            image_size={
+                "img_width": int(detect_K["img_width"]),
+                "img_height": int(detect_K["img_height"]),
+            },
+            logger=child_logger,
+            nominal_size=float(
+                self.get_parameter("cuda_nominal_size").value or 0.125
+            ),
+            tile_size=_as_int(self.get_parameter("cuda_tile_size").value, 4),
+            max_tags=_as_int(self.get_parameter("cuda_max_tags").value, 64),
+        )
+
+        self.get_logger().info(
+            "=== Pipeline ===\n"
+            f"  detector backend: {self._detector_backend}\n"
+            "  image  backend  : cuda (nvjpeg decode, VPI rectify, nvjpeg encode)\n"
+            f"  display         : {self._gpu_pipeline.display_width}x"
+            f"{self._gpu_pipeline.display_height}\n"
+            f"  detect          : {self._gpu_pipeline.detect_width}x"
+            f"{self._gpu_pipeline.detect_height} (scale {self._process_scale})\n"
             f"  jpeg_quality    : {self._jpeg_quality}\n"
             f"  min_edge_dist   : {self._min_edge_dist}px\n"
             f"  families        : {families} ({sum(len(v) for v in per_family.values())} tags)"
@@ -606,7 +792,17 @@ class AprilTagDetectorNode(Node):
             self._latest_stamp = msg.header.stamp
 
     def _image_cb_compressed(self, msg: CompressedImage) -> None:
-        """``compressed`` transport callback: ``CompressedImage`` -> BGR numpy."""
+        """``compressed`` transport callback.
+
+        On the GPU image path the JPEG bytes are stored as-is and decoded
+        once per tick (avoids decoding camera frames the tick will skip);
+        otherwise they are decoded immediately with ``cv_bridge``.
+        """
+        if self._image_pipeline == "cuda":
+            with self._lock:
+                self._latest_jpeg = bytes(msg.data)
+                self._latest_stamp = msg.header.stamp
+            return
         try:
             bgr = self._bridge.compressed_imgmsg_to_cv2(msg, desired_encoding="bgr8")
         except Exception as e:
@@ -630,6 +826,9 @@ class AprilTagDetectorNode(Node):
         """
         if not self._ready:
             return
+        if self._image_pipeline == "cuda":
+            self._tick_gpu()
+            return
         with self._lock:
             bgr = self._latest_bgr
             stamp = self._latest_stamp
@@ -642,6 +841,75 @@ class AprilTagDetectorNode(Node):
         _draw_crosshair(work)
         self._publish_annotated(work, stamp)
         self._publish_detections(detected_tags, stamp)
+
+    def _tick_gpu(self) -> None:
+        """GPU image path: nvjpeg decode -> VPI rectify -> cuAprilTags -> nvjpeg.
+
+        The decoded/rectified detection-resolution frame never leaves the
+        device. Only the full-resolution rectified frame is copied back to
+        the host, for the CPU annotation overlay and crosshair.
+        """
+        with self._lock:
+            jpeg = self._latest_jpeg
+            stamp = self._latest_stamp
+        if jpeg is None:
+            return
+        pipeline = self._gpu_pipeline
+        detector = self._detector
+        if pipeline is None or detector is None:
+            return
+        stamp = stamp if stamp is not None else self.get_clock().now().to_msg()
+
+        try:
+            display = pipeline.decode_and_rectify(jpeg)
+        except Exception as e:
+            self.get_logger().warn(
+                f"GPU image pipeline failed: {e}; skipping this tick."
+            )
+            return
+
+        detections: List[Dict] = []
+        try:
+            detections = detector.detect_device(
+                pipeline.detect_ptr,
+                pipeline.detect_width,
+                pipeline.detect_height,
+                pipeline.detect_width * 3,
+            )
+        except Exception as e:
+            self.get_logger().warn(f"Detector failed: {e}; skipping this tick.")
+
+        # Corner coordinates are in the detection-resolution frame; scale
+        # them up so the overlays land on the full-res display image.
+        if detections and pipeline.detect_width != pipeline.display_width:
+            inv = pipeline.display_width / float(pipeline.detect_width)
+            detections = [
+                {**d, "corners": d["corners"] * inv} for d in detections
+            ]
+
+        # Same edge-clip filter and pose sanitization as the CPU path.
+        if detections:
+            h, w = display.shape[:2]
+            detections = [
+                d for d in detections
+                if self._within_frame(d["corners"], w, h)
+            ]
+        detected = self._sanitize_detections(detections)
+
+        try:
+            detector.annotate(display, detections)
+        except Exception as e:
+            self.get_logger().warn(f"Detector annotate failed: {e}")
+
+        _draw_crosshair(display)
+        try:
+            jpeg_out = pipeline.encode(display, self._jpeg_quality)
+        except Exception as e:
+            self.get_logger().error(f"GPU JPEG encode failed: {e}")
+            jpeg_out = None
+        if jpeg_out is not None:
+            self._publish_annotated_bytes(jpeg_out, stamp)
+        self._publish_detections(detected, stamp)
 
     def _within_frame(self, corners: np.ndarray, width: int, height: int) -> bool:
         """``True`` when every corner is >= ``min_edge_dist`` px from the border.
@@ -691,15 +959,20 @@ class AprilTagDetectorNode(Node):
             )
         else:
             small = work
-        gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
 
-        # 3. Run the single detector (one quad-scan per family, internal).
+        # 3. Run the selected detector. cuAprilTags consumes the BGR
+        #    frame directly (uchar3); apriltag3 needs grayscale.
         detected: List[Tuple[str, int, np.ndarray, bool]] = []
         detector = self._detector
         if detector is None:
             return work, detected
         try:
-            detections = detector.detect(gray)
+            if self._detector_backend == "cuda":
+                detections = detector.detect(small)
+            else:
+                detections = detector.detect(
+                    cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+                )
         except Exception as e:
             self.get_logger().warn(f"Detector failed: {e}; skipping this tick.")
             return work, detected
@@ -725,6 +998,29 @@ class AprilTagDetectorNode(Node):
 
         # 5. Sanitize the pose; drop detections whose rotations
         #    are unrecoverable (very noisy / degenerate).
+        detected = self._sanitize_detections(detections)
+
+        # 6. Draw the bounding box + label block on the full-res
+        #    ``work`` image. Annotation errors must not stop the
+        #    pipeline -- log and continue.
+        try:
+            detector.annotate(work, detections)
+        except Exception as e:
+            self.get_logger().warn(f"Detector annotate failed: {e}")
+
+        return work, detected
+
+    def _sanitize_detections(
+        self, detections: List[Dict],
+    ) -> List[Tuple[str, int, np.ndarray, bool]]:
+        """Project rotations onto SO(3); drop unrecoverable detections.
+
+        Shared by the CPU and GPU image paths. Returns the
+        ``(family, tag_id, T, was_bad)`` tuples ``_publish_detections``
+        consumes and mutates ``det["T"]`` in place so annotation draws
+        the sanitized pose.
+        """
+        detected: List[Tuple[str, int, np.ndarray, bool]] = []
         for det in detections:
             family = det["family"]
             tag_id = det["tag_id"]
@@ -747,28 +1043,17 @@ class AprilTagDetectorNode(Node):
                         f"Skipped tag {family}:{tag_id} with bad pose "
                         f"(total bad-rotation drops: {self._bad_pose_count}): {e}"
                     )
-
-        # 6. Draw the bounding box + label block on the full-res
-        #    ``work`` image. Annotation errors must not stop the
-        #    pipeline -- log and continue.
-        try:
-            detector.annotate(work, detections)
-        except Exception as e:
-            self.get_logger().warn(f"Detector annotate failed: {e}")
-
-        return work, detected
+        return detected
 
     # =====================================================================
     # Publications
     # =====================================================================
     def _publish_annotated(self, work: np.ndarray, stamp) -> None:
-        """Encode ``work`` to JPEG (CPU) and publish as ``CompressedImage``.
+        """Encode ``work`` to JPEG on the CPU and publish.
 
-        Encoding is done inline with :func:`cv2.imencode` -- there is no
-        GPU / hardware encoder in this pipeline, so the earlier
-        ``image_jpeg.py`` factory that selected between
-        ``cv2.cuda.encodeJpeg`` / ``pyNvJPEG`` / CPU backends was
-        deleted and the call lives here.
+        Only used by the CPU image path; the GPU path encodes with
+        nvjpeg in :meth:`_tick_gpu` and calls
+        :meth:`_publish_annotated_bytes`.
 
         The frame id of the published message comes from
         :meth:`_camera_frame_id` (ROS param override -> ``CameraInfo``
@@ -786,6 +1071,10 @@ class AprilTagDetectorNode(Node):
             self.get_logger().error(f"JPEG encode failed: {e}")
             return
 
+        self._publish_annotated_bytes(jpeg_bytes, stamp)
+
+    def _publish_annotated_bytes(self, jpeg_bytes: bytes, stamp) -> None:
+        """Publish already-encoded JPEG bytes as ``CompressedImage``."""
         msg = CompressedImage()
         msg.format = "jpeg"
         msg.data = jpeg_bytes

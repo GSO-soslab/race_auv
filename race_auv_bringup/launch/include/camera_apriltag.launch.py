@@ -183,13 +183,35 @@ def _build_pairs(config_path: str) -> List[_CamPair]:
             tags_override = cfg.get("tags", []) or []
         tags_override_json = json.dumps(tags_override)
 
-        # Jetson / Foxglove perf knobs (per-camera). HW-accel selection
-        # lives in detector_defaults (use_cuda, jpeg_backend); these
-        # per-camera knobs are pure image-pipeline tunings.
+        # Detector + image-pipeline knobs (per-camera, falling back to
+        # detector_defaults). detector_backend selects python vs cuda.
         process_scale = float(cam.get("process_scale", 1.0))
         jpeg_quality = int(cam.get("jpeg_quality", 80))
         min_edge_dist = int(
             cam.get("min_edge_dist", detector_defaults.get("min_edge_dist", 10))
+        )
+        detector_backend = str(
+            cam.get("detector_backend",
+                    detector_defaults.get("detector_backend", "python"))
+        ).lower()
+        cuda_tile_size = int(
+            cam.get("cuda_tile_size", detector_defaults.get("cuda_tile_size", 4))
+        )
+        cuda_nominal_size = float(
+            cam.get("cuda_nominal_size",
+                    detector_defaults.get("cuda_nominal_size", 0.125))
+        )
+        cuda_max_tags = int(
+            cam.get("cuda_max_tags", detector_defaults.get("cuda_max_tags", 64))
+        )
+        # Image stages: "cuda" = nvjpeg decode + VPI rectify + nvjpeg encode.
+        image_pipeline = str(
+            cam.get("image_pipeline",
+                    detector_defaults.get("image_pipeline", "cpu"))
+        ).lower()
+        gpu_rectify_interval = int(
+            cam.get("gpu_rectify_interval",
+                    detector_defaults.get("gpu_rectify_interval", 4))
         )
 
         detector_node = Node(
@@ -211,6 +233,12 @@ def _build_pairs(config_path: str) -> List[_CamPair]:
                 "process_scale": process_scale,
                 "jpeg_quality": jpeg_quality,
                 "min_edge_dist": min_edge_dist,
+                "detector_backend": detector_backend,
+                "image_pipeline": image_pipeline,
+                "gpu_rectify_interval": gpu_rectify_interval,
+                "cuda_tile_size": cuda_tile_size,
+                "cuda_nominal_size": cuda_nominal_size,
+                "cuda_max_tags": cuda_max_tags,
                 "intrinsics.fx": float(intrinsics.get("fx", 0.0)),
                 "intrinsics.fy": float(intrinsics.get("fy", 0.0)),
                 "intrinsics.cx": float(intrinsics.get("cx", 0.0)),

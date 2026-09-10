@@ -1,6 +1,21 @@
 # AprilTag Backend Refactor Plan — In-Process CUDA Detector (cuAprilTags)
 
-**Status:** planned, not yet implemented (2026-09-10).
+**Status:** implemented on `jazzy-devel-new-apriltag-isaac` (2026-09-10).
+The CUDA shim, Python wrapper, node backend switch and config/launch
+changes are in place; the shim smoke test passes on JetPack 7.2 /
+CUDA 13.2 (Orin Nano) with the `lib_aarch64_jetpack61` library.
+`detector_backend: "cuda"` is set in `race_auv_bringup/config/apriltag.yaml`;
+simulation keeps `"python"`. tag25h9 tags are dropped (CUDA supports
+tag36h11 only).
+
+Follow-up implemented the same day: an in-process **GPU image pipeline**
+(`image_pipeline: "cuda"`) adds nvjpeg decode and encode plus a VPI CUDA
+fisheye rectify, keeping the detection-resolution frame in device memory
+(see `image_cuda_shim.cpp` and `GpuImagePipeline` in
+`race_auv_camera_pkg/apriltag_cuda.py`). Measured full chain:
+~17 ms/frame at 1920x1080 with `process_scale: 0.5` vs ~99 ms on the
+CPU path. Verify with `gpu_image_smoke.py`.
+
 This document supersedes the earlier `pupil_apriltags` -> `apriltag3` plan.
 The existing `AprilTagDetector` (`apriltag_processor.py`) stays in the tree as
 the `python` fallback backend; the CUDA backend is added alongside it.

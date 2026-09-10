@@ -39,6 +39,18 @@ apriltag:
     # unreliable pose). Override per-camera in the `cameras:` list.
     min_edge_dist:     10
 
+    # Detector backend: "python" (apriltag3 CPU, all families) for the
+    # simulation, or "cuda" (cuAprilTags) on a CUDA-capable dev box.
+    # The CUDA backend only decodes tag36h11.
+    detector_backend: "python"
+    cuda_tile_size:    4
+    cuda_nominal_size: 0.15    # sim medium tags are 15cm
+    cuda_max_tags:     64
+    # Stonefish publishes raw images, so the GPU image pipeline (which
+    # needs JPEG + compressed transport) is not used in simulation.
+    image_pipeline: "cpu"
+    gpu_rectify_interval: 4
+
   # Tag family / id / physical size.
   #
   # IDs are per-family (each family numbers its own tags 0..N) and the
@@ -48,14 +60,13 @@ apriltag:
   #
   # Sizes MUST match the tag dimensions in the station URDF and SCN
   # (world_of_stonefish/vehicles/race_station.scn). Current groups:
-  #   - tag25h9   @ 27 cm   (3 IDs) -- the large front/port/starboard tags
   #   - tag36h11  @ 15 cm   (3 IDs) -- the medium port/starboard/top tags
   #   - tag36h11  @ 5 cm    (2 IDs) -- the small upper/lower tags on top
+  #
+  # The historical tag25h9 @ 27cm tags are no longer detected: the CUDA
+  # backend (used on hardware) cannot decode tag25h9, so they were
+  # dropped here too to keep sim and hardware tag lists identical.
   tags:
-    # 3 x tag25h9 @ 27cm
-    - { id: 2,  family: "tag25h9",  size: 0.27 }
-    - { id: 13, family: "tag25h9",  size: 0.27 }
-    - { id: 17, family: "tag25h9",  size: 0.27 }
     # 3 x tag36h11 @ 15cm
     - { id: 146, family: "tag36h11", size: 0.15 }
     - { id: 176, family: "tag36h11", size: 0.15 }
@@ -86,10 +97,6 @@ apriltag:
       output_detections_topic: "apriltag_detection/detections3d"
       jpeg_quality: 90          # Foxglove / topside bandwidth vs. detail
       tags:
-      # 3 x tag25h9 @ 27cm
-      - { id: 2,  family: "tag25h9",  size: 0.27 }
-      - { id: 13, family: "tag25h9",  size: 0.27 }
-      - { id: 17, family: "tag25h9",  size: 0.27 }
       # 1 x tag36h11 @ 15cm
       - { id: 146, family: "tag36h11", size: 0.15 }
       # 2 x tag36h11 @ 5cm

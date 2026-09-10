@@ -258,6 +258,22 @@ class ImageRectifier:
             distortion=np.zeros(5, dtype=np.float32),
         )
 
+    def get_maps(self):
+        """Return ``(map_x, map_y)`` (CV_32FC1) mapping output -> input.
+
+        The maps are full-frame, i.e. *not* ROI-cropped; callers that
+        want the rectifier's final image must slice them by ``self.roi``.
+        They are used by the GPU (VPI) rectifier so it produces the exact
+        same geometry as the CPU path.
+        """
+        if self._is_fisheye:
+            return self.map1, self.map2
+        map_x, map_y = cv2.initUndistortRectifyMap(
+            self._camera_matrix, self._dist_coeffs, None,
+            self.new_camera_matrix, self._image_size, cv2.CV_32FC1,
+        )
+        return map_x, map_y
+
 
 # =============================================================================
 # Selection helper

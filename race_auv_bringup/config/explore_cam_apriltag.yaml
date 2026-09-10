@@ -1,0 +1,124 @@
+# Configuration for race_auv_bringup/launch/explore_cam_apriltag.launch.py
+#
+# Single-camera AprilTag test: one DWE exploreHD camera + one
+# race_auv_camera_pkg/apriltag_detector_node.
+#
+# This file is the launch's single source of truth. The driver's shared
+# parameter files (hardware_controls.yaml, auxiliary_processors.yaml) are
+# loaded first, then everything below overrides them.
+#
+# To point at a different camera or calibration, edit the blocks here —
+# no launch arguments needed.
+
+explore_apriltag:
+
+  # ------------------------------------------------------------------ camera
+  camera:
+    namespace: "explore"          # topics live under /<namespace>/...
+    frame_id: "dwe_camera_frame"  # header.frame_id on images + detections
+
+    video:
+      # id: 0                       # /dev/videoN (used when product_name is empty)
+      product_name: "exploreHD"            # V4L2 name substring; needs v4l2-ctl. Empty -> id
+      width: 1920
+      height: 1080
+      framerate: 15               # camera capture rate (Hz)
+      format: "MJPG"
+
+    # Intrinsics for the camera above. The driver does not publish
+    # CameraInfo, so the detector is built from these values.
+    intrinsics:
+      fx: 940.0597275193584
+      fy: 938.2718508264143
+      cx: 1002.9198063358938
+      cy: 559.7804085258584
+      distortion: [-0.08339682607572382, 0.011613744433569906, 0.0027410310201898304, -0.005838586149185105]
+      fisheye: true
+
+    # V4L2 camera controls, merged on top of hardware_controls.yaml.
+    # Any control declared by dwe_camera_driver is accepted; unsupported
+    # ones are logged and marked read-only by the driver.
+    controls:
+      auto_exposure: true
+      exposure_time: 156
+      gain: 0
+      white_balance_automatic: true
+      white_balance_temperature: 4600
+      sharpness: 0
+      backlight_compensation: 0
+      power_line_frequency: 0
+      brightness: 0
+      contrast: 32
+      saturation: 64
+      hue: 0
+      gamma: 100
+
+    # Auxiliary streams from dwe_camera_driver.
+    aux_process:
+      img_raw: false
+      img_raw_framerate: 5
+      img_calibrated: false
+      img_calibrated_framerate: 15
+    compression:
+      downscale: 4
+      target_fps: 0               # 0 disables the low-bandwidth stream
+      jpeg_quality: 80
+
+  # Base parameter files loaded into camera_node before the overrides
+  # above. Relative paths are resolved against the dwe_camera_driver
+  # package share directory.
+  driver_config:
+    hardware_controls: "config/hardware_controls.yaml"
+    camera_parameters: "config/camera_parameters/explore_cam.yaml"
+    auxiliary_processors: "config/auxiliary_processors.yaml"
+
+  # ---------------------------------------------------------------- detector
+  detector:
+    backend: "cuda"               # "cuda" (tag36h11 only) or "python"
+    # Image stages:
+    #   "cuda" -- nvjpeg decode + VPI CUDA fisheye rectify + nvjpeg encode
+    #   "cpu"  -- cv_bridge/cv2 decode + CPU rectify + cv2.imencode
+    # "cuda" requires backend="cuda" and compressed transport.
+    image_pipeline: "cuda"
+    gpu_rectify_interval: 4       # VPI warp grid spacing (power of two)
+    publish_rate: 10.0            # detector tick rate (Hz)
+    process_scale: 1.0            # detect on a downscaled frame; restart to change
+    jpeg_quality: 90              # annotated stream quality
+    min_edge_dist: 10             # drop detections within N px of the border
+
+    image_transport: "compressed"
+    image_topic: ""               # "" -> /<camera.namespace>/image/compressed
+    info_topic: ""                # "" -> use intrinsics above
+    output_image_topic: ""        # "" -> /<ns>/apriltag_detection/image
+    output_detections_topic: ""   # "" -> /<ns>/apriltag_detection/detections3d
+
+    # Tag list used when `tags:` below is empty (the "all tags" default).
+    config_yaml: "config/apriltag.yaml"
+
+    cuda:
+      # Adaptive-threshold window passed to nvCreateAprilTagsDetector.
+      # NVIDIA's tested default is 4. Larger = smoother / more global
+      # threshold (robust to uneven lighting, can miss small tags);
+      # smaller = more local (handles shading, more noise).
+      # Fixed at detector creation: restart the node to change.
+      tile_size: 4
+      # Reference size the detector is created with. Translations are
+      # rescaled to each tag's real size (t * size / nominal_size), and
+      # that rescale is exact -- this value does not change accuracy.
+      # Use a common real tag size so the rescale is 1.0 for it
+      # (0.125 = the 12.5 cm tag).
+      nominal_size: 0.12
+      max_tags: 32
+
+  # Tags to detect (one `tags:` key, indent 2 = sibling of camera/detector).
+  #
+  # Empty list (`tags: []`) = ALL tags: the detector falls back to the
+  # global `tags:` list in `detector.config_yaml` (every tag36h11).
+  #
+  # To restrict detection, list only the tags you want, e.g.:
+  tags:
+    - { id: 9,   family: "tag36h11", size: 0.125 }
+    - { id: 54,  family: "tag36h11", size: 0.04 }
+    - { id: 55,  family: "tag36h11", size: 0.04 }
+    - { id: 205, family: "tag36h11", size: 0.04 }
+    # - { id: 222, family: "tag36h11", size: 0.04 }

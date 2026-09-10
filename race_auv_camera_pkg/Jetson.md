@@ -5,25 +5,77 @@ Jetson Orin (Nano / AGX / Orin NX) with one or more camera streams.
 This file is the operator's quick reference for the Jetson-specific
 deployment pieces.
 
-The detector pipeline runs entirely on the CPU. Earlier versions of
-this package supported GPU-accelerated rectification (`cv2.cuda.remap`)
-and JPEG encoding (`cv2.cuda.encodeJpeg` / NVIDIA `nvjpeg` via
-`pyNvJPEG`); those paths were removed because the OpenCV build
-bundled with JetPack in the version we target does not include
-`NVCOMPRESS`, and `pyNvJPEG`'s wheel is not available for the Python
-version we ship. See the top-of-file comment in `image_processing.py`
-for the full rationale; the JPEG encode is now done inline with
-`cv2.imencode` in `apriltag_detector_node._publish_annotated`.
+> For the complete from-zero setup (host dependencies, submodule +
+> Git LFS bootstrap, CUDA shim build, verification, configuration
+> reference and troubleshooting), see
+> [`JETSON_ORIN_NANO_SETUP.md`](JETSON_ORIN_NANO_SETUP.md).
+
+Rectification and JPEG encoding run on the CPU by default. The earlier
+GPU paths based on OpenCV (`cv2.cuda.remap`, `cv2.cuda.encodeJpeg`) and
+`pyNvJPEG` were removed because the OpenCV build bundled with JetPack
+does not include `NVCOMPRESS` and `pyNvJPEG`'s wheel is not available
+for our Python version. GPU image stages are now available through
+in-process NVIDIA libraries instead (nvjpeg decode/encode + VPI CUDA
+rectify, section 0.2). See the top-of-file comment in
+`image_processing.py` for the CPU rationale.
+
+Tag *detection* can also run on the GPU through the in-process
+cuAprilTags backend (`detector_backend: "cuda"`, the default in
+`race_auv_bringup/config/apriltag.yaml`). It decodes `tag36h11` only;
+the `python` backend (apriltag3) remains available for all families
+and for simulation.
 
 ---
 
-## 0. Install `apriltag3`
+## 0. Build the CUDA detector (cuAprilTags)
 
-The detector uses the upstream `AprilRobotics/apriltag` Python wrapper
-(the C extension built via CMake). It is **not** in the Debian apt
-repos and is **not** available via `pip install` from a wheel --
-the upstream repo does not ship a `setup.py` / `pyproject.toml`, so
-the canonical install is a CMake build + install:
+The CUDA backend links NVIDIA's prebuilt `libcuapriltags.a`, which
+lives in the `isaac_ros_nitros` repository as Git LFS objects. Fetch
+the sparse submodule plus only the cuapriltags LFS blobs:
+
+```bash
+sudo apt install -y git-lfs        # or put a git-lfs binary on PATH
+scripts/setup_third_party.sh       # from the race_auv repo root
+```
+
+Then build the shim package (uses the CUDA toolkit that ships with
+JetPack; CMake >= 3.16):
+
+```bash
+cd ~/ros2_ws
+colcon build --packages-up-to race_auv_apriltag_cuda race_auv_camera_pkg
+source install/setup.bash
+```
+
+The detector node also needs ROS' `vision_msgs` message package
+(declared in `race_auv_camera_pkg/package.xml`); on a fresh Jetson:
+
+```bash
+sudo apt install ros-jazzy-vision-msgs
+```
+
+Smoke-test the shim before running the stack (renders a synthetic
+tag36h11 and checks the decoded id + pose):
+
+```bash
+python3 src/race_auv/race_auv_apriltag_cuda/test/cuapriltags_smoke.py
+```
+
+If the CUDA backend cannot be built (missing submodule, no CUDA
+device), set `detector_backend: "python"` in
+`race_auv_bringup/config/apriltag.yaml` and install apriltag3 instead
+(section 0.1).
+
+---
+
+## 0.1 Install `apriltag3` (python fallback only)
+
+The python backend needs the upstream `AprilRobotics/apriltag` Python
+wrapper **with pose estimation** (`estimate_tag_pose`). Note that the
+Ubuntu `python3-apriltag` package (3.3.0) does *not* ship that method:
+using it makes every detection fall back to an identity pose. Build the
+upstream repo instead. It is **not** available via `pip install`
+(upstream ships no wheel), so the canonical install is a CMake build:
 
 ```bash
 sudo apt install -y cmake build-essential python3-dev python3-numpy
@@ -67,8 +119,42 @@ sudo cmake --build build --target install
 sudo ldconfig
 ```
 
-The `cv2.cuda` / `pyNvJPEG` GPU paths remain off (see top of file);
-only the detector library itself changed.
+The `cv2.cuda` / `pyNvJPEG` image-pipeline GPU paths remain off; the
+GPU image stages are implemented with in-process NVIDIA libraries
+instead (see section 0.2).
+
+---
+
+## 0.2 GPU image pipeline (nvjpeg + VPI)
+
+`image_pipeline: "cuda"` replaces the CPU image stages with in-process
+NVIDIA ones:
+
+* **decode** — nvjpeg (`libnvjpeg.so`), ~10-11 ms at 1920x1080
+* **rectify** — VPI 4 CUDA (`WarpMap.fisheye_correction`), ~1-2 ms
+* **encode** — nvjpeg, ~2 ms for the annotated frame
+
+Both ship with a full `nvidia-jetpack` install
+(`nvidia-jetpack-dev` → `nvidia-vpi-dev`; `cuda-libraries-dev-13-2` →
+`libnvjpeg-dev-13-2`). For a minimal install see
+`JETSON_ORIN_NANO_SETUP.md` §2; without VPI the CMake configure warns
+and skips `librace_auv_image_cuda.so`, and the node must fall back to
+`image_pipeline: "cpu"`.
+
+The detection-resolution frame stays in device memory and is consumed
+directly by cuAprilTags; only the full-resolution rectified frame is
+copied back for the CPU annotation overlay. Measured full chain
+(decode + rectify + detect at `process_scale: 0.5` + encode):
+**~17 ms/frame** vs ~99 ms on the CPU path.
+
+Requirements: `image_transport: "compressed"` and
+`detector_backend: "cuda"` (the node warns and falls back to the CPU
+image path otherwise). Config knobs: `image_pipeline`,
+`gpu_rectify_interval`. Verify with
+`race_auv_apriltag_cuda/test/gpu_image_smoke.py`.
+
+`Failed to open PVA device node` on stderr is harmless: VPI probes the
+PVA unit at init and falls back to CUDA.
 
 ---
 
@@ -83,7 +169,7 @@ Verify with `jtop` (recommended) or `tegrastats`.
 
 ---
 
-## 2. Expected per-stage timings (1600x1200 @ 5 Hz, CPU)
+## 2. Expected per-stage timings (1600x1200, CPU pipeline)
 
 | Stage                            | process_scale=1.0 | process_scale=0.5 |
 |----------------------------------|-------------------|-------------------|
@@ -96,10 +182,18 @@ Verify with `jtop` (recommended) or `tegrastats`.
 | **Total (process_scale=1.0)**    | **~45-80 ms**     | --                |
 | **Total (process_scale=0.5)**    | --                | **~35-55 ms**     |
 
-`process_scale: 0.5` is the single biggest knob: it cuts detection
-time by ~3-5x on the CPU cores with negligible accuracy loss for
-dock-sized tags at typical working distances. Even at full resolution
-the pipeline keeps up with 5 Hz on the Orin; at 0.5 it has ~2x headroom.
+`process_scale: 0.5` cuts the apriltag3 detection time by ~3-5x on the
+CPU cores with negligible accuracy loss for dock-sized tags at typical
+working distances. Even at full resolution the pipeline keeps up with
+5 Hz on the Orin; at 0.5 it has ~2x headroom.
+
+With `detector_backend: "cuda"` the "Detect" stages above are replaced
+by a host-to-device copy of the processed BGR image plus the GPU
+detect. Measured on the Orin Nano at 1600x1200 (full frame, including
+the H2D copy): **~23 ms/frame (~43 fps of headroom)**, with the CPU
+cores free. The hardware YAML runs `process_scale: 1.0` so full
+resolution reaches the GPU; lower it if you need more margin (the
+detector is created for a fixed size, so that requires a restart).
 
 ---
 

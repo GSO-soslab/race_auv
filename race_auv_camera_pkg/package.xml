@@ -22,6 +22,8 @@
   <depend>tf2_ros</depend>
 
   <exec_depend>dwe_camera_driver</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>race_auv_apriltag_cuda</exec_depend>
   <exec_depend>python3-opencv</exec_depend>
   <exec_depend>python3-scipy</exec_depend>
   <exec_depend>python3-numpy</exec_depend>

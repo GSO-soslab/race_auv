@@ -16,8 +16,9 @@ apriltag:
   # every apriltag_detector_node. Override per-camera in the `cameras:`
   # list if a single camera needs different behavior.
   #
-  # Defaults are tuned for Jetson Orin (4 perf cores; 2x internal
-  # decimation in apriltag3; nx0 GPU rectify + nvjpeg JPEG).
+  # Defaults are tuned for Jetson Orin (4 perf cores). nthreads / quad_*
+  # only apply to the python (apriltag3) backend; the CUDA detector uses
+  # cuda_* below.
   detector_defaults:
     nthreads:          4
     quad_decimate:     2.0
@@ -30,31 +31,38 @@ apriltag:
     # unreliable pose). Override per-camera in the `cameras:` list.
     min_edge_dist:     10
 
-    # --- Hardware acceleration (Jetson / Orin / any CUDA-capable host) ---
-    # Master switch. When true, the rectifier tries cv2.cuda.remap and
-    # the JPEG encoder tries hardware paths. Falls back to CPU
-    # gracefully on any failure (missing module, no CUDA device, etc.).
-    use_cuda: true
+    # --- Tag detection backend -------------------------------------------
+    # Which detector apriltag_detector_node runs:
+    #   "cuda"   -- in-process cuAprilTags (race_auv_apriltag_cuda);
+    #               tag36h11 only. Requires the isaac_ros_nitros
+    #               submodule (scripts/setup_third_party.sh).
+    #   "python" -- apriltag3 CPU fallback (all tag families).
+    detector_backend: "cuda"
 
-    # JPEG encoder for the annotated CompressedImage published to
-    # Foxglove / topside. One of:
-    #   "auto"   -- with use_cuda=true: pyNvJPEG -> cv2.cuda.encodeJpeg
-    #               -> CPU. With use_cuda=false: CPU.
-    #   "nvjpeg" -- NVIDIA pyNvJPEG hardware encoder (Jetson only).
-    #   "cuda"   -- cv2.cuda.encodeJpeg (OpenCV built with NVCOMPRESS).
-    #   "cpu"    -- cv2.imencode.
-    jpeg_backend: "cuda"
+    # cuAprilTags knobs (ignored by the python backend).
+    cuda_tile_size:    4
+    cuda_nominal_size: 0.125   # detector creation size; per-tag rescale
+    cuda_max_tags:     64
+
+    # --- Image stages (decode / rectify / encode) ------------------------
+    #   "cuda" -- nvjpeg decode + VPI CUDA fisheye rectify + nvjpeg encode.
+    #             Requires detector_backend="cuda" and compressed transport.
+    #             The detection-resolution frame stays on the GPU.
+    #   "cpu"  -- cv_bridge/cv2 decode + CPU rectify + cv2.imencode.
+    image_pipeline: "cuda"
+    # VPI warp grid spacing for the GPU rectifier (power of two).
+    gpu_rectify_interval: 4
 
   # Master tag list. Each camera entry can override this with its own
   # `tags:` list (recommended), or omit `tags:` to fall back to this
   # list. IDs are per-family; apriltag3 uses the canonical lowercase
   # name (e.g. "tag36h11").
+  #
+  # The cuAprilTags backend (detector_backend: "cuda") only decodes
+  # tag36h11, so the historical tag25h9 @ 21cm entries were dropped.
+  # If a camera is switched back to "python", re-add its tag25h9 tags
+  # here (or in its per-camera `tags:` list).
   tags:
-    # 4 x tag25h9 @ 21cm
-    - { id: 17, family: "tag25h9",  size: 0.21  }
-    - { id: 13, family: "tag25h9",  size: 0.21  }
-    - { id: 2,  family: "tag25h9",  size: 0.21  }
-    - { id: 25, family: "tag25h9",  size: 0.21  }
     # 2 x tag36h11 @ 12.5cm
     - { id: 9,  family: "tag36h11", size: 0.125 }
     - { id: 22, family: "tag36h11", size: 0.125 }
@@ -91,10 +99,9 @@ apriltag:
       output_image_topic:     "apriltag_detection/image"
       output_detections_topic: "apriltag_detection/detections3d"
       publish_rate: 15.0
-      # # cam_front only ever sees tag25h9 @ 21cm + tag36h11 @ 12.5cm
+      # Optional per-camera tag override; cam_front uses the global
+      # `tags:` list (all tag36h11 entries).
       # tags:
-      #   - { id: 17, family: "tag25h9",  size: 0.21 }
-      #   - { id: 13, family: "tag25h9",  size: 0.21 }
       #   - { id: 9,  family: "tag36h11", size: 0.125 }
       #   - { id: 22, family: "tag36h11", size: 0.125 }
       # stellar air intrinsics fallback (used only when info_topic is empty).
@@ -109,7 +116,11 @@ apriltag:
         fisheye: true
 
       # --- Image-pipeline tunings (per-camera) ---
-      process_scale: 0.5        # detect on 800x600; annotate stays full-res
+      # CUDA detection is cheap, so run at full resolution to keep small
+      # and distant tags. Lower this if the CPU rectify stage becomes the
+      # bottleneck (requires a node restart: the detector is created for
+      # a fixed image size).
+      process_scale: 1.0
       jpeg_quality: 90          # Foxglove / topside bandwidth vs. detail
 
     - name: "cam_down"
@@ -131,7 +142,7 @@ apriltag:
       output_image_topic:     "apriltag_detection/image"
       output_detections_topic: "apriltag_detection/detections3d"
       publish_rate: 15.0
-      # cam_down only ever sees tag36h11 @ 4cm
+      # cam_down sees the two 12.5cm station tags.
       tags:
         # 2 x tag36h11 @ 12.5cm
         - { id: 9,  family: "tag36h11", size: 0.125 }
@@ -146,5 +157,5 @@ apriltag:
         distortion: [-0.064599, -0.002388, 0.001767, 0.000415]
         fisheye: true
 
-      process_scale: 0.5
+      process_scale: 1.0
       jpeg_quality: 90
