@@ -1,4 +1,8 @@
-[submodule "third_party/isaac_ros_nitros"]
-	path = third_party/isaac_ros_nitros
-	url = https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_nitros.git
-	branch = release-4.6
+[submodule "race_auv_perception"]
+	path = race_auv_perception
+	url = https://github.com/GSO-soslab/race_auv_perception.git
+	branch = main
+[submodule "race_auv_sim"]
+	path = race_auv_sim
+	url = https://github.com/GSO-soslab/race_auv_sim.git
+	branch = main

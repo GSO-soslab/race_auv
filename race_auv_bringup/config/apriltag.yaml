@@ -35,7 +35,9 @@ apriltag:
     # Which detector apriltag_detector_node runs:
     #   "cuda"   -- in-process cuAprilTags (race_auv_apriltag_cuda);
     #               tag36h11 only. Requires the isaac_ros_nitros
-    #               submodule (scripts/setup_third_party.sh).
+    #               submodule (race_auv_perception/scripts/
+    #               setup_third_party.sh). Falls back to "python"
+    #               automatically when the native shim is unavailable.
     #   "python" -- apriltag3 CPU fallback (all tag families).
     detector_backend: "cuda"
 

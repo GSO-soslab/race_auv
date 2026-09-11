@@ -4,6 +4,8 @@ This document describes the localization architecture for the RACE AUV platform.
 
 Scope: the production localization pipeline — IMU, DVL, pressure, AprilTags, USBL — and how each sensor's data reaches both the high-rate controller and the dock-relative pose estimator.
 
+> **Repository layout:** `race_auv_camera_pkg` and `race_auv_apriltag_cuda` now live in the `race_auv_perception` submodule; `race_auv_sim_pkg` lives in the `race_auv_sim` submodule (paths under `src/race_auv/race_auv_perception/...` and `src/race_auv/race_auv_sim/...`). Package references below use the submodule layout.
+
 ---
 
 ## 1. Context
@@ -14,7 +16,7 @@ The AUV platform runs on a Stonefish simulation and on real hardware. Both deplo
 - **A globally accurate, low-rate pose** for the dock-approach phase, where sub-decimeter accuracy is required relative to the docking station.
 - **Runtime-togglable sensors** so the same pipeline operates with the full sensor stack in simulation, with a subset on a stripped-down AUV, and with graceful degradation when a sensor drops out.
 
-The current pipeline (`apriltag_fuser_node` in `race_auv_sim_pkg`) implements a single snapshot joint Umeyama solve over per-camera tag detections. It is a deterministic least-squares fit per tick — no temporal smoothing, no IMU/DVL integration, no global positioning. It is sufficient for tag-only dock-relative pose but cannot extend to multi-sensor fusion.
+The current pipeline (`apriltag_fuser_node` in `race_auv_camera_pkg`, in the `race_auv_perception` submodule) implements a single snapshot joint Umeyama solve over per-camera tag detections. It is a deterministic least-squares fit per tick — no temporal smoothing, no IMU/DVL integration, no global positioning. It is sufficient for tag-only dock-relative pose but cannot extend to multi-sensor fusion.
 
 This document defines the architecture that replaces the current fuser with a two-layer pipeline: a `robot_localization` EKF layer for high-rate inertial dead-reckoning, and a gtsam factor-graph layer for global corrections (tags, USBL). Each sensor is a toggleable factor.
 
@@ -91,7 +93,7 @@ Key observations:
 
 ## 4. The `gtsam_dock_fuser` node
 
-A new ROS2 node in `race_auv_sim_pkg`. Owns the gtsam factor graph for the dock-relative pose.
+A new ROS2 node in the perception stack (`race_auv_camera_pkg`). Owns the gtsam factor graph for the dock-relative pose.
 
 ### Inputs
 
@@ -152,7 +154,7 @@ Publish dock_point pose = X_K @ T_base_to_dock (URDF, not from gtsam).
 
 - **gtsam 4.3a0** (already installed in this workspace). Python bindings include `PreintegratedImuMeasurements`, `ImuFactor`, `BetweenFactorPose3`, `PriorFactorPose3`, `GenericProjectionFactorCal3_S2`, `PinholeCameraCal3_S2`, `ISAM2`.
 - **apriltag_msgs** + **sync_and_detect** from tagslam for time-synchronized multi-camera tag detection. The current `apriltag_detector_node` only emits `vision_msgs/Detection3DArray` with a single 6-DoF pose per tag — insufficient for corner-level reprojection. `sync_and_detect` emits `apriltag_msgs/AprilTagDetectionArray` with four corner pixels per tag, which is what `GenericProjectionFactorCal3_S2` consumes.
-- **URDF `link_transform_from_base`** (already in `race_auv_sim_pkg/urdf_tag_parser.py`) for `T_base_to_dock_Point`. Single source of truth for the dock offset; recomputed at startup, never at runtime.
+- **URDF `link_transform_from_base`** (already in `race_auv_camera_pkg/urdf_tag_parser.py`) for `T_base_to_dock_Point`. Single source of truth for the dock offset; recomputed at startup, never at runtime.
 
 ---
 
@@ -235,7 +237,7 @@ The station's URDF lives in `race_station_description/urdf/base.urdf`. The link 
 ### AprilTags
 
 - Tags: 4 × tag25h9 (21 cm) + 2 × tag36h11 (12.5 cm), defined in `race_station_description/urdf/base.urdf`. The 4 cm tag36h11 tags are present in the URDF but currently commented out.
-- Detector: `apriltag_detector` plugin (`umich` or `mit`) loaded by `sync_and_detect` from tagslam. `sync_and_detect` is the canonical detector in this architecture; the legacy `apriltag_detector_node` in `race_auv_sim_pkg` is removed.
+- Detector: `apriltag_detector` plugin (`umich` or `mit`) loaded by `sync_and_detect` from tagslam. `sync_and_detect` is the canonical detector in this architecture; the legacy `apriltag_detector_node` in `race_auv_camera_pkg` is removed.
 - Output: `apriltag_msgs/AprilTagDetectionArray` per camera, one element per tag with 4 corner pixels and the family/id.
 - gtsam factor: `GenericProjectionFactorCal3_S2` per corner, per tag, per camera. With 6 tags visible across 2 cameras and 4 corners each, this is up to 48 residuals per keyframe — substantially more information than the current coarse `T_cam_to_tag` solve.
 - Calibration: camera intrinsics come from `apriltag.yaml` (generated into `cameras.yaml` for `sync_and_detect`). Camera-to-IMU extrinsics come from the URDF (e.g., `race_auv/cam_front` chain).
@@ -251,7 +253,7 @@ The station's URDF lives in `race_station_description/urdf/base.urdf`. The link 
 
 ### Note on current pipeline
 
-The current `apriltag_fuser_node` (in `race_auv_sim_pkg`) is being replaced by `gtsam_dock_fuser`. The current `apriltag_detector_node` is being replaced by `sync_and_detect` from tagslam. The current `vision_msgs/Detection3DArray` (single 6-DoF pose per tag) is being replaced by `apriltag_msgs/AprilTagDetectionArray` (4 corner pixels per tag). The single-output TF `race_auv/base_link -> dock_point` (already wired through the in-progress fuser changes) becomes the contract for the new node. The legacy `vision_msgs/Detection3DArray` topic is removed; no adapter is published. Any downstream consumer not updated to subscribe to `apriltag_msgs/AprilTagDetectionArray` will silently stop receiving tag data.
+The current `apriltag_fuser_node` (in `race_auv_camera_pkg`) is being replaced by `gtsam_dock_fuser`. The current `apriltag_detector_node` is being replaced by `sync_and_detect` from tagslam. The current `vision_msgs/Detection3DArray` (single 6-DoF pose per tag) is being replaced by `apriltag_msgs/AprilTagDetectionArray` (4 corner pixels per tag). The single-output TF `race_auv/base_link -> dock_point` (already wired through the in-progress fuser changes) becomes the contract for the new node. The legacy `vision_msgs/Detection3DArray` topic is removed; no adapter is published. Any downstream consumer not updated to subscribe to `apriltag_msgs/AprilTagDetectionArray` will silently stop receiving tag data.
 
 ---
 
@@ -342,7 +344,7 @@ The architecture fails open: the controller never stops, the dock approach only 
 
 ### Phase 5 — Removal (1-2 days)
 
-1. Delete `apriltag_fuser_node`, `apriltag_detector_node`, `apriltag.launch.py`, `apriltag.yaml` from `race_auv_sim_pkg`. Remove their entries from `setup.py`'s `console_scripts` and the package's `data_files`.
+1. Delete `apriltag_fuser_node`, `apriltag_detector_node`, `apriltag.launch.py`, `apriltag.yaml` from `race_auv_camera_pkg`. Remove their entries from `setup.py`'s `console_scripts` and the package's `data_files`.
 2. Search the workspace for any remaining subscriber to `vision_msgs/Detection3DArray` or any string `Detection3DArray`:
    ```bash
    rg "Detection3DArray" /home/dark3090/ros2_ws/src/race_auv
@@ -364,7 +366,7 @@ The architecture fails open: the controller never stops, the dock approach only 
 
 ```bash
 # Build
-colcon build --packages-select race_auv_sim_pkg
+colcon build --packages-select race_auv_camera_pkg
 
 # Confirm gtsam Python bindings are present
 python3 -c "import gtsam; print(gtsam.PreintegratedImuMeasurements, gtsam.ISAM2, gtsam.GenericProjectionFactorCal3_S2)"

@@ -14,6 +14,34 @@ This is a simulator of race_auv for ROS2-MVP framework development.
 
     - `race_auv_description` include urdf files and rviz configuration files.
 
+## Repository layout (submodules)
+
+Perception and simulation packages are split into their own repositories
+and linked here as submodules, so each machine only pulls what it runs:
+
+- `race_auv_perception` — `race_auv_camera_pkg` + `race_auv_apriltag_cuda`
+  (plus the `third_party/isaac_ros_nitros` cuAprilTags submodule).
+- `race_auv_sim` — `race_auv_sim_pkg`.
+
+| Machine | Init these submodules | Notes |
+| --- | --- | --- |
+| Frontseat Pi5 | none | Clone with `--no-recurse-submodules`; no CUDA / perception / sim packages are built. |
+| Backseat Jetson | `race_auv_perception` | Then run `race_auv_perception/scripts/setup_third_party.sh` for the cuAprilTags LFS library. |
+| Sim computer | `race_auv_perception` `race_auv_sim` | No CUDA toolkit needed: `race_auv_apriltag_cuda` builds without the native shims and `apriltag_detector_node` uses the CPU backend. |
+
+```bash
+# Backseat Jetson
+git submodule update --init race_auv_perception
+race_auv_perception/scripts/setup_third_party.sh
+
+# Sim computer
+git submodule update --init race_auv_perception race_auv_sim
+```
+
+Do **not** clone with `--recursive`: the `isaac_ros_nitros` submodule would
+pull hundreds of MB of Git LFS objects. Use `setup_third_party.sh`, which
+sparse-checks out only `lib/cuapriltags` and pulls just those blobs.
+
     ## Installation
     ### Stonefish Simulator
     We use [Stonefish](https://github.com/patrykcieslak/stonefish) Simulator for our system development.
