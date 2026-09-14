@@ -55,6 +55,7 @@ def generate_launch_description():
                         remappings=[
                             ('datum', 'gps/datum'),
                             ('imu/data', 'ekf/imu/data'), 
+                            ('mvp_helm/bhv_teleop_twist/joy', 'mvp_helm/bhv_teleop/joy')
                             # ('gps/fix', 'unicore_rtk_driver/fix')
                         ],
                         parameters=[

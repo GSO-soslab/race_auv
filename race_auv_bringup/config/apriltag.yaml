@@ -1,10 +1,11 @@
 # AprilTag pipeline configuration for race_auv_camera_pkg.
 #
-# Single YAML for both the dwe_camera_driver instances (per-camera
-# `driver:` block) and the per-camera apriltag_detector_node
-# (everything else under each `cameras:` entry). The launch file
-# race_auv_bringup/launch/include/camera_apriltag.launch.py reads this
-# file.
+# launch/include/apriltag_detection.launch.py reads each `cameras:`
+# entry below to start one apriltag_detector_node per enabled camera.
+# The camera drivers themselves are started separately by
+# launch/include/multi_camera.launch.py (hardcoded product
+# names/topics for the two Stellar cameras). See
+# launch/bringup_camera_perception.launch.py for the combined bringup.
 #
 # No fuser, no TF: the detector only publishes annotated images and
 # Detection3DArray topics.
@@ -84,16 +85,9 @@ apriltag:
       namespace: "cam_front"
       enabled: true
 
-      # --- dwe_camera_driver block ---
-      driver:
-        node_name: "stellar_camera_node_2"
-        namespace: "race"
-        product_name: "usb-3610000.usb-2.3"   # stellar2 -> front
-        remap_image_compressed:        "stellar2/image/compressed"
-        remap_image_lowbw_compressed:  "stellar2/image_lowbw/compressed"
-        remap_camera_settings:         "stellar2/camera_settings"
-
       # --- apriltag_detector_node block ---
+      # image_topic matches stellar_camera_node_2 in multi_camera.launch.py
+      # (product_name usb-3610000.usb-2.3, remapped to stellar2/...).
       detector_namespace: "cam_front"
       image_transport: "compressed"
       image_topic: "/race/stellar2/image/compressed"
@@ -129,14 +123,8 @@ apriltag:
       namespace: "cam_down"
       enabled: true
 
-      driver:
-        node_name: "stellar_camera_node_1"
-        namespace: "race"
-        product_name: "usb-3610000.usb-2.1"   # stellar1 -> down
-        remap_image_compressed:        "stellar1/image/compressed"
-        remap_image_lowbw_compressed:  "stellar1/image_lowbw/compressed"
-        remap_camera_settings:         "stellar1/camera_settings"
-
+      # image_topic matches stellar_camera_node_1 in multi_camera.launch.py
+      # (product_name usb-3610000.usb-2.1, remapped to stellar1/...).
       detector_namespace: "cam_down"
       image_transport: "compressed"
       image_topic: "/race/stellar1/image/compressed"

@@ -3,7 +3,7 @@ finite_state_machine:
   start:
     initial: true
     control_mode: idle
-    transitions: [kill, teleop, survey, mapping]
+    transitions: [kill, teleop, teleop_twist, survey, mapping]
     # max_duration: 100
     # exit_state: start
   
@@ -18,7 +18,12 @@ finite_state_machine:
     transitions: [start, kill] 
     # max_duration: 30
     exit_state: start
-    
+
+  teleop_twist:
+    control_mode: teleop_twist
+    transitions: [start, kill]
+    exit_state: start
+
   survey:
     control_mode: flight
     transitions: [start, kill, teleop]
@@ -37,6 +42,11 @@ behaviors:
     plugin: helm/Teleoperation
     priority:
       teleop: 1
+
+  bhv_teleop_twist:
+    plugin: helm/Teleoperation
+    priority:
+      teleop_twist: 1
   
   # bhv_direct_control:
   #   plugin: helm/DirectControl
