@@ -13,6 +13,25 @@ bhv_teleop:
   tele_d_yaw: 10.0 
   tele_d_pitch: 10.0
   tele_d_depth: 0.2
+  no_joy_timeout: 100.0
+
+bhv_teleop_twist:
+  default_bhv_world_link: world_ned
+  default_bhv_child_link: cg_link
+  ####tele-op, ang in degrees####
+  ##left up/down controls surge
+  ##X and B controls yaw
+  ##Y and A controls pitch
+  ##RB and RT controls depth
+  ## LB has to be pressed 
+  ##LT resets desired states to zero for all.
+  twist_mode: true
+  tele_s_surge: 0.5 # m/s
+  tele_s_sway: -0.5 # m/s
+  tele_d_w: 0.1 # m/s
+  tele_d_q: 1.0 # deg/s
+  tele_d_r: 1.0 # deg/s
+  no_joy_timeout: 100.0
 
 bhv_direct_control:
     # unit: meter

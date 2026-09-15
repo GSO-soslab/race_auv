@@ -31,7 +31,6 @@ bhv_teleop_twist:
   tele_d_w: 0.1 # m/s
   tele_d_q: 1.0 # deg/s
   tele_d_r: 1.0 # deg/s
-
   no_joy_timeout: 100.0
 
 # bhv_direct_control:
