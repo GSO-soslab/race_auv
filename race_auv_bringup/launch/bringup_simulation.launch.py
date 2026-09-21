@@ -79,14 +79,16 @@ def generate_launch_description():
     )
 
     # ground-truth docking-station pose in auv base_link
-    # (still provided by race_auv_sim_pkg/launch/ground_truth_pose.launch.py;
-    # uncomment if you want it in the bringup)
-    # ground_truth_pose = IncludeLaunchDescription(
-    #     PythonLaunchDescriptionSource([
-    #         os.path.join(get_package_share_directory('race_auv_sim_pkg'),
-    #                      'launch', 'ground_truth_pose.launch.py')
-    #     ]),
-    # )
+    # (provided by race_auv_sim_pkg/launch/ground_truth_pose.launch.py)
+    # uncommented by maryam: also launches dock_point_rpy_monitor now
+    # (see ground_truth_pose.launch.py) -- monitoring/verification for
+    # the docking mission/control loop.
+    ground_truth_pose = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([
+            os.path.join(get_package_share_directory('race_auv_sim_pkg'),
+                         'launch', 'ground_truth_pose.launch.py')
+        ]),
+    )
 
     # race station bringup
     station_simulation = IncludeLaunchDescription(
@@ -107,13 +109,27 @@ def generate_launch_description():
         simulation,
         localization,
         description,
-        mvp_control,
-        mvp_mission,
-        joy,
+        # commented out by maryam: mvp_control_ros_node writes to the same
+        # six control/thruster/* topics as race_docking_control's
+        # docking_control_node -- both running at once means they fight
+        # over the same thrusters. Re-enable when testing teleop/waypoints
+        # instead of the docking mission/control loop.
+        # mvp_control,
+        # commented out by maryam: mvp_helm's only real consumer is
+        # mvp_control_ros_node (disabled above) -- nothing to drive while
+        # testing the docking mission/control loop instead.
+        # mvp_mission,
+        # commented out by maryam: joy_node only feeds mvp_helm's
+        # bhv_teleop (mvp_mission, disabled above) -- no teleop path to
+        # drive while mvp_helm is off.
+        # joy,
         # mvp_c2_top,
         # mvp_c2_vehicle,
         apriltag_pipeline,
-        # ground_truth_pose,
+        # uncommented by maryam: also launches dock_point_rpy_monitor now
+        # (see ground_truth_pose.launch.py) -- monitoring/verification
+        # for the docking mission/control loop.
+        ground_truth_pose,
         # station_simulation
         # rviz
     ])
