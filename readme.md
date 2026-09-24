@@ -21,7 +21,7 @@ This is the configuration for the RACE AUV on the ROS2-MVP framework.
 
 - `race_auv_sim` (**submodule**): `race_auv_sim_pkg`.
 
-See [LOCALIZATION_ARCHITECTURE.md](LOCALIZATION_ARCHITECTURE.md) for how the localization stack is put together.
+<!-- See [LOCALIZATION_ARCHITECTURE.md](LOCALIZATION_ARCHITECTURE.md) for how the localization stack is put together. -->
 
 ## Installation
 
