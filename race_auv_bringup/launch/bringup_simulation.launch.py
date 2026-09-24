@@ -89,9 +89,11 @@ def generate_launch_description():
     # )
 
     # race station bringup
-    station_simulation = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource([os.path.join(get_package_share_directory(station_bringup), 'launch','bringup_simulation.launch.py')]),
-    )
+    # (requires the race_station repo in the workspace; uncomment if you
+    # want it in the bringup)
+    # station_simulation = IncludeLaunchDescription(
+    #     PythonLaunchDescriptionSource([os.path.join(get_package_share_directory(station_bringup), 'launch','bringup_simulation.launch.py')]),
+    # )
 
     #Rviz
     rviz_config_dir = os.path.join( get_package_share_directory(robot_description), 'rviz', 'config.rviz' )
@@ -114,6 +116,6 @@ def generate_launch_description():
         # mvp_c2_vehicle,
         apriltag_pipeline,
         # ground_truth_pose,
-        # station_simulation
-        # rviz
+        # station_simulation,
+        rviz,
     ])
