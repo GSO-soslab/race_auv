@@ -44,7 +44,7 @@ apriltag:
     # The CUDA backend only decodes tag36h11.
     detector_backend: "python"
     cuda_tile_size:    4
-    cuda_nominal_size: 0.15    # sim medium tags are 15cm
+    cuda_nominal_size: 0.12    # sim medium tags: 12cm black square (15cm box incl. white border)
     cuda_max_tags:     64
     # Stonefish publishes raw images, so the GPU image pipeline (which
     # needs JPEG + compressed transport) is not used in simulation.
@@ -67,13 +67,15 @@ apriltag:
   # backend (used on hardware) cannot decode tag25h9, so they were
   # dropped here too to keep sim and hardware tag lists identical.
   tags:
-    # 3 x tag36h11 @ 15cm
-    - { id: 146, family: "tag36h11", size: 0.15 }
-    - { id: 176, family: "tag36h11", size: 0.15 }
-    - { id: 185, family: "tag36h11", size: 0.15 }
-    # 2 x tag36h11 @ 5cm
-    - { id: 541, family: "tag36h11", size: 0.05 }
-    - { id: 558, family: "tag36h11", size: 0.05 }
+    # Sizes are the BLACK SQUARE edge, where the corners are detected. The sim
+    # textures are 15cm / 5cm boxes whose black square is 80% of the box.
+    # 3 x tag36h11 @ 12cm black square
+    - { id: 146, family: "tag36h11", size: 0.12 }
+    - { id: 176, family: "tag36h11", size: 0.12 }
+    - { id: 185, family: "tag36h11", size: 0.12 }
+    # 2 x tag36h11 @ 4cm black square
+    - { id: 541, family: "tag36h11", size: 0.04 }
+    - { id: 558, family: "tag36h11", size: 0.04 }
 
   # One entry per physical camera. Add / remove / enable cameras here.
   cameras:
@@ -97,11 +99,11 @@ apriltag:
       output_detections_topic: "apriltag_detection/detections3d"
       jpeg_quality: 90          # Foxglove / topside bandwidth vs. detail
       tags:
-      # 1 x tag36h11 @ 15cm
-      - { id: 146, family: "tag36h11", size: 0.15 }
-      # 2 x tag36h11 @ 5cm
-      - { id: 541, family: "tag36h11", size: 0.05 }
-      - { id: 558, family: "tag36h11", size: 0.05 }
+      # 1 x tag36h11 @ 12cm black square
+      - { id: 146, family: "tag36h11", size: 0.12 }
+      # 2 x tag36h11 @ 4cm black square
+      - { id: 541, family: "tag36h11", size: 0.04 }
+      - { id: 558, family: "tag36h11", size: 0.04 }
       # # Intrinsics fallback (used only when CameraInfo is absent).
       # intrinsics:
       #   fx: 953.919689
@@ -129,8 +131,8 @@ apriltag:
       # IDs are decoded, instead of all 8 tags from the global `tags:` list.
       jpeg_quality: 90          # Foxglove / topside bandwidth vs. detail
       tags:
-        - { id: 176, family: "tag36h11", size: 0.15 }
-        - { id: 185, family: "tag36h11", size: 0.15 }
+        - { id: 176, family: "tag36h11", size: 0.12 }
+        - { id: 185, family: "tag36h11", size: 0.12 }
       # intrinsics:
       #   fx: 953.919689
       #   fy: 954.022011
