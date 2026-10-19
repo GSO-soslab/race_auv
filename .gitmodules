@@ -6,3 +6,7 @@
 	path = race_auv_sim
 	url = https://github.com/GSO-soslab/race_auv_sim.git
 	branch = main
+[submodule "race_auv_factorgraph"]
+	path = race_auv_factorgraph
+	url = https://github.com/GSO-soslab/race_auv_factorgraph.git
+	branch = main

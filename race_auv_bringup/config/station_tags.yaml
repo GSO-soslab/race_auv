@@ -1,0 +1,12 @@
+# The docking station's tags: the one list both the tag detector
+# (tag_factorgraph_detector.yaml) and dock_fuser (dock_fuser.yaml) use.
+# Their launch files (launch/include/) pass this file first, then their own.
+#
+# tag36h11 only. Size = black-square side in metres, not the printed sheet.
+# Every ID needs a link apriltag36h11_<id> (with its mounting pose) in
+# race_station_description/urdf/base.urdf; dock_fuser skips, with a warning,
+# a tag without one.
+/**:
+  ros__parameters:
+    tag_ids:   [54, 146, 176, 185, 541, 558]
+    tag_sizes: [0.22, 0.12, 0.12, 0.12, 0.04, 0.04]   # 22 cm, 3 x 12 cm, 2 x 4 cm

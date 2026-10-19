@@ -259,3 +259,6 @@ tags
 docs/_build
 
 # End of https://www.toptal.com/developers/gitignore/api/clion,ros,pycharm,visualstudiocode,linux,vim,cmake,macos
+
+# Local clone of berndpfrommer/tagslam (reference for race_auv_factorgraph, not part of this repo)
+tagslam/

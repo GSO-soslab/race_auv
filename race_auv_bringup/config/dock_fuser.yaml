@@ -1,0 +1,50 @@
+# dock_fuser parameters for the vehicle: the factor graph of
+# race_auv_factorgraph, started by launch/include/dock_fuser.launch.py (via
+# bringup_camera_tag_factorgraph.launch.py) together with station_tags.yaml.
+# Design reference: race_auv_factorgraph/docs/DOCK_FUSER_PIPELINE.md. Every
+# estimator.* knob is documented in race_auv_factorgraph/core/common/config.py.
+# (Simulation and tank-replay configs stay in race_auv_factorgraph/config/.)
+#
+# What is NOT here, because it has one source elsewhere:
+#  * tag IDs and sizes: station_tags.yaml (shared with the tag detector);
+#  * tag poses on the station and the camera's pose on the AUV: the station
+#    and AUV URDFs below;
+#  * the camera matrix: the tag detector's latched, rectified camera_info
+#    (/cam_front/apriltag_detection/camera_info), computed from the raw
+#    calibration in tag_factorgraph_detector.yaml. The node waits for it.
+dock_fuser:
+  ros__parameters:
+    odom_topic: /race_auv/odometry/filtered
+    # DVL bottom-lock velocity, published only while the DVL has bottom lock.
+    # A silence = the EKF dead-reckons (drifts), then snaps back when the DVL
+    # returns; those odometry steps are de-weighted (estimator.dvl_*).
+    # "" disables it.
+    dvl_topic: /race_auv/nucleus_node/bottom_lock_velocity_common
+    graph_frame: race_auv/odom
+    base_frame: race_auv/base_link
+    station_base_frame: race_station/base_link
+    dock_frame: race_station/dock_point
+    publish_station_static_tf: true
+    dock_pose_topic: /race_auv/dock_point/pose
+
+    auv_urdf_package: race_auv_description
+    auv_urdf_file: urdf/base.urdf
+    station_urdf_package: race_station_description
+    station_urdf_file: urdf/base.urdf
+
+    # One camera: each of its detector messages (tags or not) is one keyframe,
+    # so the detector's publish_rate (5 Hz) is the keyframe rate. Its topics
+    # and frame follow from the name: /cam_front/apriltag_detection/tags,
+    # .../camera_info, frame race_auv/cam_front.
+    camera_names: [cam_front]
+
+    estimator:
+      # DVL dropout handling (core/frontend/dvl_monitor.py). Extra odometry
+      # translation sigma: dvl_blind_speed * blind time per step, and
+      # dvl_blind_speed * silence length on the re-lock (snap) step.
+      dvl_timeout: 0.5          # s without a DVL message = bottom lock lost (DVL at 5 Hz)
+      dvl_blind_speed: 0.1      # m/s; tank: EKF snaps <= ~0.1 m/s * silence (11.2 s -> 1.05 m)
+      dvl_relock_margin: 0.3    # s after re-lock still counted as the snap
+      # Fixed-lag smoother: variables older than this are marginalized (§9).
+      smoother_lag: 30.0
+      sigma_px: 1.0

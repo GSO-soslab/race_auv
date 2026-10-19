@@ -21,6 +21,8 @@ This is the configuration for the RACE AUV on the ROS2-MVP framework.
 
 - `race_auv_sim` (**submodule**): `race_auv_sim_pkg`.
 
+- `race_auv_factorgraph` (**submodule**): `race_auv_factorgraph` (node `dock_fuser`), the gtsam factor graph for the docking station pose. Design in [race_auv_factorgraph/docs/DOCK_FUSER_PIPELINE.md](race_auv_factorgraph/docs/DOCK_FUSER_PIPELINE.md).
+
 <!-- See [LOCALIZATION_ARCHITECTURE.md](LOCALIZATION_ARCHITECTURE.md) for how the localization stack is put together. -->
 
 ## Installation

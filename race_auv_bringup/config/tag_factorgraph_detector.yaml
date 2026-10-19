@@ -1,0 +1,78 @@
+# tag_detector_node parameters (race_auv_perception/race_auv_camera_tag_factorgraph),
+# the tag36h11 detector for the factor-graph dock_fuser. Started by
+# launch/include/tag_factorgraph_detection.launch.py (via
+# bringup_camera_tag_factorgraph.launch.py): one node per camera,
+# named tag_detector in the camera's namespace.
+#
+# Standard ROS 2 parameter file: `/**` applies to every node, a node's full
+# name (/<camera>/tag_detector) to that node only. Keep each parameter in one
+# of the two, not both.
+#
+# Outputs of each node (in its namespace, e.g. /cam_front/...):
+#   apriltag_detection/tags           corners, canonical order (dock_fuser input)
+#   apriltag_detection/detections3d   IPPE pose per tag
+#   apriltag_detection/camera_info    rectified intrinsics (latched)
+#   apriltag_detection/image          debug image, only if publish_image
+# Same topics as race_auv_camera_pkg's detector: run this or
+# bringup_camera_perception.launch.py, not both.
+#
+# The raw calibration below is the only camera calibration in the
+# factor-graph pipeline: dock_fuser takes the rectified camera matrix from
+# the latched camera_info. For the underwater calibration below it is
+#   1600x1200, fx 1165.2372, fy 1164.9232, cx 801.9339, cy 679.6697
+
+# ---------------------------------------------------------------- all cameras
+/**:
+  ros__parameters:
+    publish_rate: 5.0          # Hz = dock_fuser keyframe rate; one message per processed image
+    image_transport: compressed
+    # tag_ids / tag_sizes: station_tags.yaml (shared with dock_fuser).
+
+    # apriltag3 (CPU). quad_decimate finds quads on a downscaled image
+    # (faster); corners are then refined at full resolution. Only 1, 1.5 and
+    # whole numbers work: apriltag3 truncates other values for the image but
+    # still scales the corners by them, and finds nothing (1.25, 1.5625, 2.5).
+    # Tank images: 2.0 finds every tag, corners 0.2 px from 1.0, 2.5x faster.
+    threads: 2
+    quad_decimate: 2.0
+    refine_edges: true
+
+    # Image checks (tags.py), applied before publishing:
+    min_edge_px: 10.0          # every corner this far from the rectified border
+    min_side_px: 15.0          # shortest tag side in the image
+    max_fit_rms_px: 1.5        # RMS error of the best IPPE pose
+
+    # Debug image (rectified, tag outlines + IDs + axes) for Foxglove.
+    publish_image: false
+    jpeg_quality: 80
+
+# ---------------------------------------------------------------- per camera
+# Raw (distorted) UNDERWATER fisheye calibration, from
+# config/camera/camera_parameters/stellar_cam.yaml.
+/cam_front/tag_detector:
+  ros__parameters:
+    image_topic: /race/stellar2/image/compressed   # stellar2 = cam_front (multi_camera.launch.py)
+    camera_frame: race_auv/cam_front
+    intrinsics:
+      fx: 1262.74163
+      fy: 1262.40141
+      cx: 801.604094
+      cy: 670.832446
+      width: 1600
+      height: 1200
+      distortion: [-0.0011265, -0.1213276, 0.444942, -0.388063]
+      fisheye: true
+
+/cam_down/tag_detector:
+  ros__parameters:
+    image_topic: /race/stellar1/image/compressed   # stellar1 = cam_down
+    camera_frame: race_auv/cam_down
+    intrinsics:
+      fx: 1262.74163
+      fy: 1262.40141
+      cx: 801.604094
+      cy: 670.832446
+      width: 1600
+      height: 1200
+      distortion: [-0.0011265, -0.1213276, 0.444942, -0.388063]
+      fisheye: true
