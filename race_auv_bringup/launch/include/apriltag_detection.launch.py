@@ -9,6 +9,21 @@ which publishes:
 Each enabled entry in apriltag.yaml's ``cameras:`` list gets one
 ``race_auv_camera_pkg/apriltag_detector_node`` here. See
 bringup_camera_perception.launch.py for the combined bringup.
+
+Sequential spawn (startup-load safety)
+--------------------------------------
+Detectors are spawned one at a time, in YAML order, with a fixed delay
+between consecutive spawns:
+
+    t = 0 s          detector 0     (first enabled cameras: entry)
+    t = 2 s          detector 1
+    t = 4 s          detector 2
+    ...
+
+Spacing the spawns keeps each node's OpenCV / CUDA context setup and
+first-frame burst from hitting the CPU all at once. The delay is
+``_INTER_DETECTOR_DELAY_S``; tune in one place if a different host
+needs more or less.
 """
 
 import json
@@ -17,7 +32,13 @@ import os
 import yaml
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
+from launch.actions import TimerAction
 from launch_ros.actions import Node
+
+
+# Delay between consecutive detector spawns, in seconds.
+# 2 s is enough on Jetson Orin to keep detector startups from piling up.
+_INTER_DETECTOR_DELAY_S = 3.0
 
 
 def generate_launch_description():
@@ -41,7 +62,7 @@ def generate_launch_description():
         tags = cam.get('tags')
         tags_override = json.dumps(list(tags)) if tags else '[]'
 
-        detector_nodes.append(Node(
+        node = Node(
             package='race_auv_camera_pkg',
             executable='apriltag_detector_node',
             name=f'apriltag_detector_{cam_name}',
@@ -101,6 +122,16 @@ def generate_launch_description():
                 ],
                 'intrinsics.fisheye': bool(intrinsics.get('fisheye', False)),
             }],
-        ))
+        )
+
+        # Spawn detectors one at a time. `len(detector_nodes)` counts
+        # only already-appended (enabled) detectors, so the first one
+        # starts at t=0 and each subsequent one is delayed by one more
+        # `_INTER_DETECTOR_DELAY_S` tick.
+        delay_s = _INTER_DETECTOR_DELAY_S * len(detector_nodes)
+        if delay_s > 0.0:
+            detector_nodes.append(TimerAction(period=delay_s, actions=[node]))
+        else:
+            detector_nodes.append(node)
 
     return LaunchDescription(detector_nodes)

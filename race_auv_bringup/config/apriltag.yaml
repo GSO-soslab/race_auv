@@ -21,11 +21,11 @@ apriltag:
   # only apply to the python (apriltag3) backend; the CUDA detector uses
   # cuda_* below.
   detector_defaults:
-    nthreads:          4
+    nthreads:          2
     quad_decimate:     2.0
     quad_sigma:        0.0
     refine_edges:      true
-    publish_rate:      15.0
+    publish_rate:      5.0
     # Minimum pixel distance from a detected tag's edge to the
     # rectified image border. Detections closer than this are dropped
     # (their corners are likely clipped by the frame, giving an
@@ -40,7 +40,7 @@ apriltag:
     #               setup_third_party.sh). Falls back to "python"
     #               automatically when the native shim is unavailable.
     #   "python" -- apriltag3 CPU fallback (all tag families).
-    detector_backend: "cuda"
+    detector_backend: "python"
 
     # cuAprilTags knobs (ignored by the python backend).
     cuda_tile_size:    4
@@ -52,7 +52,7 @@ apriltag:
     #             Requires detector_backend="cuda" and compressed transport.
     #             The detection-resolution frame stays on the GPU.
     #   "cpu"  -- cv_bridge/cv2 decode + CPU rectify + cv2.imencode.
-    image_pipeline: "cuda"
+    image_pipeline: "cpu"
     # VPI warp grid spacing for the GPU rectifier (power of two).
     gpu_rectify_interval: 4
 
@@ -66,18 +66,16 @@ apriltag:
   # If a camera is switched back to "python", re-add its tag25h9 tags
   # here (or in its per-camera `tags:` list).
   tags:
-    # 2 x tag36h11 @ 12.5cm
-    - { id: 9,  family: "tag36h11", size: 0.125 }
-    - { id: 22, family: "tag36h11", size: 0.125 }
-    # 8 x tag36h11 @ 4cm
-    - { id: 54,  family: "tag36h11", size: 0.04  }
-    - { id: 55,  family: "tag36h11", size: 0.04  }
-    - { id: 205, family: "tag36h11", size: 0.04  }
-    - { id: 222, family: "tag36h11", size: 0.04  }
-    - { id: 541, family: "tag36h11", size: 0.04  }
-    - { id: 558, family: "tag36h11", size: 0.04  }
-    - { id: 568, family: "tag36h11", size: 0.04  }
-    - { id: 585, family: "tag36h11", size: 0.04  }
+    # 1 x tag36h11 @ 22cm
+    - { id: 054, family: "tag36h11", size: 0.22 }
+    # 3 x tag36h11 @ 12cm
+    - { id: 146, family: "tag36h11", size: 0.12 }
+    - { id: 176, family: "tag36h11", size: 0.12 }
+    - { id: 185, family: "tag36h11", size: 0.12 }
+    # 2 x tag36h11 @ 4cm
+    - { id: 541, family: "tag36h11", size: 0.04 }
+    - { id: 558, family: "tag36h11", size: 0.04 }
+
 
   # One entry per physical camera. Add / remove / enable cameras here.
   cameras:
@@ -94,7 +92,7 @@ apriltag:
       camera_frame: "race_auv/cam_front"
       output_image_topic:     "apriltag_detection/image"
       output_detections_topic: "apriltag_detection/detections3d"
-      publish_rate: 15.0
+      publish_rate: 5.0
       # Optional per-camera tag override; cam_front uses the global
       # `tags:` list (all tag36h11 entries).
       # tags:
@@ -131,12 +129,12 @@ apriltag:
       camera_frame: "race_auv/cam_down"
       output_image_topic:     "apriltag_detection/image"
       output_detections_topic: "apriltag_detection/detections3d"
-      publish_rate: 15.0
+      publish_rate: 5.0
       # cam_down sees the two 12.5cm station tags.
       tags:
         # 2 x tag36h11 @ 12.5cm
-        - { id: 9,  family: "tag36h11", size: 0.125 }
-        - { id: 22, family: "tag36h11", size: 0.125 }
+        - { id: 176, family: "tag36h11", size: 0.12 }
+        - { id: 185, family: "tag36h11", size: 0.12 }
       intrinsics:
         fx: 953.919689
         fy: 954.022011

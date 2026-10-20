@@ -71,7 +71,7 @@
   ros__parameters:
     image_topic: /race/stellar1/image/compressed   # stellar1 = cam_down
     camera_frame: race_auv/cam_down
-    publish_image: false
+    publish_image: true
     intrinsics:
       fx: 1262.74163
       fy: 1262.40141

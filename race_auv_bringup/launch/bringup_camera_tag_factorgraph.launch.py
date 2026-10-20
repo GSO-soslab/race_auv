@@ -28,8 +28,8 @@ def generate_launch_description():
         include('multi_camera.launch.py'),
         # Give the camera drivers a few seconds to open the devices and
         # start publishing before the detectors subscribe.
-        TimerAction(period=3.0, actions=[include('tag_factorgraph_detection.launch.py')]),
+        TimerAction(period=5.0, actions=[include('tag_factorgraph_detection.launch.py')]),
         # The fuser last, once the detectors are up (their camera_info is
         # latched, so it is received even if it was published earlier).
-        TimerAction(period=8.0, actions=[include('dock_fuser.launch.py')]),
+        TimerAction(period=12.0, actions=[include('dock_fuser.launch.py')]),
     ])

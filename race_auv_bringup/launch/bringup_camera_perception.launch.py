@@ -28,5 +28,5 @@ def generate_launch_description():
         multi_camera,
         # Give the camera drivers a few seconds to open the devices and
         # start publishing before the detectors subscribe.
-        TimerAction(period=3.0, actions=[apriltag_detection]),
+        TimerAction(period=5.0, actions=[apriltag_detection]),
     ])
