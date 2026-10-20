@@ -6,3 +6,5 @@
     child_link_initial: cg_link
     world_link_initial: world_ned
     controller_no_setpoint_timeout: 100.0
+    # added by maryam: do not zero a DOF integral when its setpoint changes
+    reset_integral_on_setpoint_change: false

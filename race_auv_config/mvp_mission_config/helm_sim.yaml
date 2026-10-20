@@ -3,7 +3,7 @@ finite_state_machine:
   start:
     initial: true
     control_mode: idle
-    transitions: [kill, teleop, teleop_twist, survey, mapping]
+    transitions: [kill, teleop, teleop_twist, survey, mapping, docking]
     # max_duration: 100
     # exit_state: start
   
@@ -36,6 +36,11 @@ finite_state_machine:
     max_duration: 4000
     exit_state: kill
 
+  docking:
+    control_mode: teleop  #docking
+    transitions: [start, kill]
+    exit_state: start
+
 behaviors:
 
   bhv_teleop:
@@ -48,10 +53,10 @@ behaviors:
     priority:
       teleop_twist: 1
   
-  # bhv_direct_control:
-  #   plugin: helm/DirectControl
-  #   priority:
-  #     direct_control: 1
+  bhv_direct_control:
+    plugin: helm/DirectControl
+    priority:
+      docking: 1
 
   bhv_path_following:
     plugin: helm/PathFollowing

@@ -36,6 +36,21 @@ control_modes:
     w:    {p: 100.0 ,  i: 5.0,   d: 0.0, v: 0.0,  pid_max: 30, pid_min: -30}
     q:    {p: 100.0 ,  i: 5.0,   d: 0.0, v: 0.0,  pid_max: 15, pid_min: -15}
     r:    {p: 100.0 ,  i: 5.0,   d: 0.0, v: 0.0,  pid_max: 15, pid_min: -15}
+
+  # New mode for race_docking_mission's PID-guidance test, fed via
+  # mvp_helm's bhv_direct_control (not controller/process/set_point
+  # directly). Same DOF set as "flight" (z/roll/pitch/yaw position +
+  # u/v velocity), kept as its own mode so tuning it doesn't disturb
+  # flight's own gains. Starting values copied from flight as a
+  # baseline -- retune separately.
+  # docking:
+  #   u:      {p: 30.0,   i: 1.5,   d: 0.0, v: 5.0,   pid_max: 50, pid_min: -50}
+  #   v:      {p: 5.0 ,  i: 0.2,   d: 0.0, v: 5.0,  pid_max: 15, pid_min: -15}
+  #   z:      {p: 15.0,   i: 1.0 ,  d: 0.0, v: 5.0,  pid_max: 30, pid_min: -30}
+  #   roll:   {p: 2.0,   i: 0.1,  d: 0.0, v: 5.0,  pid_max: 10, pid_min: -10}
+  #   pitch:  {p: 5.0,   i: 1.0,  d: 0.0, v: 5.0,  pid_max: 20, pid_min: -20}
+  #   yaw:    {p: 4.0,   i: 0.2,   d: 0.0, v: 5.0,  pid_max: 15, pid_min: -15}
+
 thruster_ids:
   sway_stern:
     control_tf: sway_stern_thruster_link

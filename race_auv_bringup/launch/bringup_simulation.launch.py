@@ -109,19 +109,17 @@ def generate_launch_description():
         simulation,
         localization,
         description,
-        # commented out by maryam: mvp_control_ros_node writes to the same
-        # six control/thruster/* topics as race_docking_control's
-        # docking_control_node -- both running at once means they fight
-        # over the same thrusters. Re-enable when testing teleop/waypoints
-        # instead of the docking mission/control loop.
-        # mvp_control,
-        # commented out by maryam: mvp_helm's only real consumer is
-        # mvp_control_ros_node (disabled above) -- nothing to drive while
-        # testing the docking mission/control loop instead.
-        # mvp_mission,
+        # uncommented by maryam: testing the PID-guidance path now --
+        # race_docking_mission feeds mvp_helm's bhv_direct_control, which
+        # forwards to mvp_control_ros_node, instead of running
+        # race_docking_control's docking_control_node directly. Comment
+        # these back out (and re-enable docking_control_node) to go back
+        # to the RBF controller -- never run both at once, they write to
+        # the same control/thruster/* topics.
+        mvp_control,
+        mvp_mission,
         # commented out by maryam: joy_node only feeds mvp_helm's
-        # bhv_teleop (mvp_mission, disabled above) -- no teleop path to
-        # drive while mvp_helm is off.
+        # bhv_teleop -- not needed for the direct-control docking path.
         # joy,
         # mvp_c2_top,
         # mvp_c2_vehicle,
