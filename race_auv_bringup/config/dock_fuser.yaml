@@ -26,6 +26,13 @@ dock_fuser:
     dock_frame: race_station/dock_point
     publish_station_static_tf: true
     dock_pose_topic: /race_auv/dock_point/pose
+    # Live-viewing topics (Foxglove / RViz, see race_auv_factorgraph/ros/node.py):
+    # ~/auv_pose, ~/odometry, ~/station_pose, ~/keyframe (per keyframe) and
+    # ~/path, ~/ekf_path (the last path_length keyframes of the graph and the
+    # EKF, re-published at path_rate; ~250 kB each per message at 3000).
+    publish_debug: true
+    path_rate: 1.0
+    path_length: 3000
 
     auv_urdf_package: race_auv_description
     auv_urdf_file: urdf/base.urdf

@@ -1,0 +1,173 @@
+# RViz for the factor-graph docking pipeline, topside view of a vehicle run.
+# Template: bringup_rviz_factorgraph.launch.py replaces the @...@ image topics
+# with its launch arguments and starts rviz2 on the result.
+#
+# Layout (1920x1080; camera column ~640 px, 3D view ~1000 px):
+#   left    Displays (Views tabbed behind it)
+#   centre  3D in race_auv/odom (orbit view from above; top-down saved view): the graph's real-time track
+#           (/dock_fuser/path, blue) and the EKF's (/dock_fuser/ekf_path,
+#           green), TF
+#   right   cam_front | cam_down          (top row)
+#           tag detector image, cam_front  (bottom row, larger)
+# The dock positions are the "QMainWindow State" blob at the end; RViz matches
+# each dock by its display name, so renaming a display moves it back to the
+# default position. Regenerate the blob after changing names or sizes (Qt's
+# QMainWindow.saveState() with docks of the same names, or arrange in RViz
+# and save the config).
+#
+# The paths need dock_fuser's publish_debug: true
+# (race_auv_bringup/config/dock_fuser.yaml); the detector image needs the
+# detector's publish_image: true (tag_factorgraph_detector.yaml, cam_front).
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+  - Class: rviz_common/Views
+    Name: Views
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid (0.5 m)
+      Enabled: true
+      Reference Frame: <Fixed Frame>
+      Cell Size: 0.5
+      Plane Cell Count: 40
+      Color: 160; 160; 164
+      Alpha: 0.4
+    - Class: rviz_default_plugins/Path
+      Name: graph X_k (/dock_fuser/path)
+      Enabled: true
+      Topic:
+        Value: /dock_fuser/path
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+      Color: 43; 108; 176
+      Alpha: 1
+      Line Style: Billboards
+      Line Width: 0.02
+      Pose Style: None
+    - Class: rviz_default_plugins/Path
+      Name: EKF E_k (/dock_fuser/ekf_path)
+      Enabled: true
+      Topic:
+        Value: /dock_fuser/ekf_path
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+      Color: 56; 161; 105
+      Alpha: 1
+      Line Style: Billboards
+      Line Width: 0.015
+      Pose Style: None
+    # Only the frames that matter for docking (regex whitelist): the AUV's
+    # base_link, dock point and front camera (AUV robot_state_publisher), and
+    # the station's dock_point and tag frames (dock_fuser). Edit the regex
+    # to show more.
+    - Class: rviz_default_plugins/TF
+      Name: TF
+      Enabled: true
+      Show Names: true
+      Show Axes: true
+      Show Arrows: false
+      Marker Scale: 0.4
+      Filter (whitelist): "^(race_auv/(base_link|auv_dock_point|cam_front)|race_station/(dock_point|apriltag.*))$"
+      Frames:
+        All Enabled: true
+    # Images: a topic ending in /compressed is subscribed through
+    # image_transport's compressed plugin (ros-jazzy-compressed-image-transport).
+    # Best effort, depth 1: always the newest frame, never a backlog.
+    - Class: rviz_default_plugins/Image
+      Name: cam_front (stellar2)
+      Enabled: true
+      Topic:
+        Value: "@FRONT_IMAGE@"
+        Depth: 1
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+      Normalize Range: true
+    - Class: rviz_default_plugins/Image
+      # cam_down is mounted upside down: shown through image_rotate_node
+      # (180 deg), started by the launch file.
+      Name: cam_down (stellar1)
+      Enabled: true
+      Topic:
+        Value: "@DOWN_IMAGE@"
+        Depth: 1
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+      Normalize Range: true
+    - Class: rviz_default_plugins/Image
+      Name: tag detector (cam_front)
+      Enabled: true
+      Topic:
+        Value: "@DETECTOR_IMAGE@"
+        Depth: 1
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+      Normalize Range: true
+  Enabled: true
+  Global Options:
+    Background Color: 48; 48; 48
+    Fixed Frame: race_auv/odom
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+    - Class: rviz_default_plugins/Measure
+  Value: true
+  Views:
+    # Orbit (rotate / zoom freely), starting straight above the run with
+    # odom x to the right and y up, like the plot_graph overview: yaw -90 deg
+    # puts the camera on the -y side, pitch just under 90 deg looks down.
+    # The exact top-down orthographic view is saved below (Views panel).
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Name: Current View
+      Distance: 9
+      Focal Point:
+        X: 1.0
+        Y: -3.6
+        Z: 0
+      Focal Shape Fixed Size: true
+      Focal Shape Size: 0.05
+      Invert Z Axis: false
+      Near Clip Distance: 0.01
+      Pitch: 1.55
+      Yaw: 4.712
+      Target Frame: <Fixed Frame>
+      Value: Orbit (rviz_default_plugins)
+    Saved:
+      - Class: rviz_default_plugins/TopDownOrtho
+        Name: top-down (BEV)
+        Angle: 0
+        Scale: 80
+        X: 1.0
+        Y: -3.6
+        Near Clip Distance: 0.01
+        Target Frame: <Fixed Frame>
+        Value: TopDownOrtho (rviz_default_plugins)
+Window Geometry:
+  Displays:
+    collapsed: false
+  Views:
+    collapsed: false
+  "cam_front (stellar2)":
+    collapsed: false
+  "cam_down (stellar1)":
+    collapsed: false
+  "tag detector (cam_front)":
+    collapsed: false
+  Height: 1080
+  Width: 1920
+  X: 0
+  Y: 0
+  Hide Left Dock: false
+  Hide Right Dock: false
+  QMainWindow State: 000000ff00000000fd00000002000000000000010400000438fc0200000001fc00000000000004380000003e01000023fa000000000200000002fb000000100044006900730070006c0061007900730100000000ffffffff0000001a00fffffffb0000000a005600690065007700730100000000ffffffff0000001a00ffffff000000010000028600000438fc0200000002fc000000000000013d0000001a00fffffffc0100000002fb0000002800630061006d005f00660072006f006e007400200028007300740065006c006c006100720032002901000004fa000001400000004100fffffffb0000002600630061006d005f0064006f0077006e00200028007300740065006c006c00610072003100290100000640000001400000004100fffffffb000000300074006100670020006400650074006500630074006f00720020002800630061006d005f00660072006f006e007400290100000143000002f50000001a00ffffff000003ea0000043800000004000000040000000800000008fc00000000

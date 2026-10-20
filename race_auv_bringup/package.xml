@@ -16,6 +16,8 @@
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
   <depend>rviz2</depend>
+  <!-- bringup_rviz_factorgraph.launch.py: RViz decodes the compressed camera topics -->
+  <exec_depend>compressed_image_transport</exec_depend>
   <depend>tf2_ros</depend>
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

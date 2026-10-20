@@ -12,7 +12,7 @@
 #   apriltag_detection/tags           corners, canonical order (dock_fuser input)
 #   apriltag_detection/detections3d   IPPE pose per tag
 #   apriltag_detection/camera_info    rectified intrinsics (latched)
-#   apriltag_detection/image          debug image, only if publish_image
+#   apriltag_detection/image/compressed  debug image, only if publish_image
 # Same topics as race_auv_camera_pkg's detector: run this or
 # bringup_camera_perception.launch.py, not both.
 #
@@ -42,8 +42,9 @@
     min_side_px: 15.0          # shortest tag side in the image
     max_fit_rms_px: 1.5        # RMS error of the best IPPE pose
 
-    # Debug image (rectified, tag outlines + IDs + axes) for Foxglove.
-    publish_image: false
+    # Debug image (rectified, tag outlines + IDs + axes) on
+    # apriltag_detection/image/compressed, for RViz / Foxglove on the topside
+    # (bringup_rviz_factorgraph.launch.py). publish_image is set per camera.
     jpeg_quality: 80
 
 # ---------------------------------------------------------------- per camera
@@ -53,6 +54,9 @@
   ros__parameters:
     image_topic: /race/stellar2/image/compressed   # stellar2 = cam_front (multi_camera.launch.py)
     camera_frame: race_auv/cam_front
+    # The docking camera: its detector image is the topside RViz's bottom view.
+    # Costs one JPEG encode per detector frame (5 Hz) on the Jetson.
+    publish_image: true
     intrinsics:
       fx: 1262.74163
       fy: 1262.40141
@@ -67,6 +71,7 @@
   ros__parameters:
     image_topic: /race/stellar1/image/compressed   # stellar1 = cam_down
     camera_frame: race_auv/cam_down
+    publish_image: false
     intrinsics:
       fx: 1262.74163
       fy: 1262.40141
