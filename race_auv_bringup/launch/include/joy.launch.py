@@ -20,6 +20,7 @@ def generate_launch_description():
             output="screen",
             remappings=[
                     ('joy', 'mvp_helm/bhv_teleop/joy'),
+                    ('joy', 'mvp_helm/bhv_teleop_twist/joy'),
                 ],
         ),
     ])

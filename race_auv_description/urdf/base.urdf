@@ -17,6 +17,13 @@
         <child link="nose_tip_link"/>
     </joint>
 
+    <link name="cb_link"/>
+    <joint name="cb_joint" type="fixed">
+        <origin xyz="0.0 0.0 0.05" rpy="0.0 0.0 0.0"/>
+        <parent link="base_link"/>
+        <child link="cb_link"/>
+    </joint>
+    
     <link name="cg_link"/>
     <joint name="cg_joint" type="fixed">
         <origin xyz="0.0 0.0 0.0" rpy="3.1415926 0.0 0.0"/>

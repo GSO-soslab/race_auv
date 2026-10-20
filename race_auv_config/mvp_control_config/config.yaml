@@ -12,29 +12,37 @@ control_modes:
 
 
   teleop:
-    v:        {p: 10.0 ,  i: 0.2,   d: 0.0, v: 5.0,  pid_max: 15, pid_min: -15}
+    # u:        {p: 30.0,   i: 1.5,   d: 0.0, v: 5.0,   pid_max: 50, pid_min: -50}
+    # v:        {p: 10.0 ,  i: 0.2,   d: 0.0, v: 5.0,  pid_max: 15, pid_min: -15}
+    u:        {p: 50.0,   i: 0.5,   d: 0.0, v: 5.0,   pid_max: 20, pid_min: -20}
+    v:        {p: 50.0 ,  i: 0.5,   d: 0.0, v: 5.0,  pid_max: 20, pid_min: -20}
+    # z:        {p: 70.0,   i: 10.0,  d: 0.0, v: 30.0,  pid_max: 50, pid_min: -50}
+    z:        {p: 70.0,   i: 5.0,  d: 0.0, v: 60.0,  pid_max: 50, pid_min: -50}
+    roll:     {p: 2.0,   i: 0.1,  d: 0.0, v: 5.0,  pid_max: 10, pid_min: -10}
     pitch:    {p: 50.0,   i: 1.0,  d: 0.0, v: 25.0,  pid_max: 50, pid_min: -50}
     yaw:      {p: 35.0,   i: 1.0,   d: 0.0, v: 25.0,  pid_max: 25, pid_min: -25}
-    z:        {p: 70.0,   i: 10.0,  d: 0.0, v: 30.0,  pid_max: 50, pid_min: -50}
-    roll:     {p: 2.0,   i: 0.1,  d: 0.0, v: 5.0,  pid_max: 10, pid_min: -10}
-    u:        {p: 30.0,   i: 1.5,   d: 0.0, v: 5.0,   pid_max: 50, pid_min: -50}
 
   teleop_twist:
-    v:    {p: 10.0 ,  i: 0.2,   d: 0.0, v: 5.0,  pid_max: 15, pid_min: -15}
+  teleop_twist:
+
+    # u:    {p: 30.0,   i: 1.5,   d: 0.0, v: 5.0,   pid_max: 50, pid_min: -50}
+    # v:    {p: 10.0 ,  i: 0.2,   d: 0.0, v: 5.0,  pid_max: 15, pid_min: -15}
+    # w:    {p: 100.0 ,  i: 5.0,   d: 0.0, v: 0.0,  pid_max: 30, pid_min: -30}
+    # q:    {p: 100.0 ,  i: 5.0,   d: 0.0, v: 0.0,  pid_max: 15, pid_min: -15}
+    # r:    {p: 100.0 ,  i: 5.0,   d: 0.0, v: 0.0,  pid_max: 15, pid_min: -15}
+
     u:    {p: 30.0,   i: 1.5,   d: 0.0, v: 5.0,   pid_max: 50, pid_min: -50}
-    # w:    {p: 100.0 ,  i: 5.0,   d: 0.0, v: 5.0,  pid_max: 15, pid_min: -15}
-    # q:    {p: 100.0 ,  i: 5.0,   d: 0.0, v: 5.0,  pid_max: 15, pid_min: -15}
-    # r:    {p: 100.0 ,  i: 5.0,   d: 0.0, v: 5.0,  pid_max: 15, pid_min: -15}
-    w:    {p: 100.0 ,  i: 5.0,   d: 0.0, v: 0.0,  pid_max: 30, pid_min: -30}
-    q:    {p: 100.0 ,  i: 5.0,   d: 0.0, v: 0.0,  pid_max: 15, pid_min: -15}
-    r:    {p: 100.0 ,  i: 5.0,   d: 0.0, v: 0.0,  pid_max: 15, pid_min: -15}
+    v:    {p: 10.0 ,  i: 0.2,   d: 0.0, v: 5.0,  pid_max: 15, pid_min: -15}
+    w:    {p: 250.0 ,  i: 100.0,   d: 0.0, v: 0.0,  pid_max: 50, pid_min: -50}
+    q:    {p: 30.0 ,  i: 5.0,   d: 0.0, v: 0.0,  pid_max: 15, pid_min: -15} # pitch rate
+    r:    {p: 50.0 ,  i: 5.0,   d: 0.0, v: 5.0,  pid_max: 15, pid_min: -15} # yaw rate
 
 thruster_ids:
   sway_stern:
     control_tf: sway_stern_thruster_link
     command_topic: control/thruster/sway_stern
     force_topic: control/force/sway_stern20
-    limits: [-10.0, 10.0] #[min, max]
+    limits: [-15.0, 15.0] #[min, max]
     delta_limit: 1.0
     # xyz_flag: [0.0, 0.0, 0.0]
     polynomials: [0.0, 20.2169, 10.0265, 92.5762, -3.4585, -73.7285]
@@ -67,7 +75,7 @@ thruster_ids:
     control_tf: surge_port_thruster_link
     command_topic: control/thruster/surge_port
     force_topic: control/force/surge_port
-    limits: [-20.0, 20.0] #[min, max]
+    limits: [-25.0, 25.0] #[min, max]
     delta_limit: 1.0
     # xyz_flag: [0.0, 0.0, 0.0]
     polynomials: [0.0, 20.2169, 10.0265, 92.5762, -3.4585, -73.7285]
@@ -76,7 +84,7 @@ thruster_ids:
     control_tf: surge_stbd_thruster_link
     command_topic: control/thruster/surge_stbd
     force_topic: control/force/surge_stbd
-    limits: [-20.0, 20.0] #[min, max]
+    limits: [-25.0, 25.0] #[min, max]
     delta_limit: 1.0
     # xyz_flag: [0.0, 0.0, 0.0]
     polynomials: [0.0, 20.2169, 10.0265, 92.5762, -3.4585, -73.7285]
