@@ -166,7 +166,12 @@ apriltag:
   # object.dock_link_name (here "dock_point"); T_ref_to_dock is computed
   # by composing the solved T_ref_to_base with the URDF's T_base_to_dock.
   fuser:
-    enabled: true
+    # Off: dock_fuser (race_auv_factorgraph, bringup_camera_tag_factorgraph)
+    # replaces this fuser and publishes the same race_station/dock_point/pose
+    # (compat_pose_topic in dock_fuser.yaml). Running both gives two
+    # publishers on that topic and two parents for race_station/dock_point.
+    # Set true only when running the old pipeline without dock_fuser.
+    enabled: false
     reference_frame: "race_auv/base_link"
     # Published TF: race_auv/base_link -> race_station/dock_point.
     # The leading "race_station/" prefix distinguishes the station's dock

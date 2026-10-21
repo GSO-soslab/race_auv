@@ -26,7 +26,10 @@
   ros__parameters:
     publish_rate: 5.0          # Hz = dock_fuser keyframe rate; one message per processed image
     image_transport: compressed
-    # tag_ids / tag_sizes: station_tags.yaml (shared with dock_fuser).
+    # tag_ids / tag_sizes: station_tags.yaml (shared with dock_fuser), the
+    # one place tag sizes are defined. Each camera below picks the subset it
+    # reports with camera_tag_ids (IDs only; [-1] or unset = every station
+    # tag). An ID that is not in station_tags.yaml stops the node at start-up.
 
     # apriltag3 (CPU). quad_decimate finds quads on a downscaled image
     # (faster); corners are then refined at full resolution. Only 1, 1.5 and
@@ -54,6 +57,7 @@
   ros__parameters:
     image_topic: /race/stellar2/image/compressed   # stellar2 = cam_front (multi_camera.launch.py)
     camera_frame: race_auv/cam_front
+    camera_tag_ids: [54, 146, 541, 558]   # the tags in the front camera's view
     # The docking camera: its detector image is the topside RViz's bottom view.
     # Costs one JPEG encode per detector frame (5 Hz) on the Jetson.
     publish_image: true
@@ -71,6 +75,14 @@
   ros__parameters:
     image_topic: /race/stellar1/image/compressed   # stellar1 = cam_down
     camera_frame: race_auv/cam_down
+    camera_tag_ids: [176, 185]            # the tags under the AUV at the dock
+    # Synced to cam_front: no own timer; for each cam_front detection, process
+    # the cam_down image nearest its stamp (within sync_max_dt). Both cameras
+    # run at 15 Hz, so the two detections are <= 33 ms apart instead of up to
+    # 0.2 s (two independent 5 Hz timers); dock_fuser attaches cam_down to
+    # the cam_front keyframes across that gap with the EKF.
+    sync_to: /cam_front/apriltag_detection/tags
+    sync_max_dt: 0.05
     publish_image: true
     intrinsics:
       fx: 1262.74163

@@ -33,7 +33,9 @@ def _rviz(context, *args, **kwargs):
         config = (f.read()
                   .replace('@FRONT_IMAGE@', lc('front_image'))
                   .replace('@DOWN_IMAGE@', down)
-                  .replace('@DETECTOR_IMAGE@', lc('detector_image')))
+                  .replace('@DETECTOR_IMAGE@', lc('detector_image'))
+                  .replace('@FIXED_FRAME@', lc('fixed_frame'))
+                  .replace('@GRAPH_PATH@', lc('graph_path')))
     out = tempfile.NamedTemporaryFile('w', suffix='_factorgraph.rviz', delete=False)
     out.write(config)
     out.close()
@@ -66,6 +68,11 @@ def generate_launch_description():
       ros2 launch race_auv_bringup bringup_rviz_factorgraph.launch.py
       # replaying a bag on the topside (nodes on the bag's /clock):
       ros2 launch race_auv_bringup bringup_rviz_factorgraph.launch.py use_sim_time:=true
+      # in the graph-corrected frame (dock_fuser corrected_frame): the AUV
+      # model sits on the graph's track and the station stays put through a
+      # DVL dropout, where race_auv/odom (the EKF's) drifts
+      ros2 launch race_auv_bringup bringup_rviz_factorgraph.launch.py \
+          fixed_frame:=race_auv/odom_graph graph_path:=/dock_fuser/path_graph
     """
     return LaunchDescription([
         DeclareLaunchArgument('use_sim_time', default_value='false',
@@ -81,5 +88,12 @@ def generate_launch_description():
         DeclareLaunchArgument('detector_image',
                               default_value='/cam_front/apriltag_detection/image/compressed',
                               description='tag detector debug image (rectified, tags drawn)'),
+        # 3D view frame and the graph track shown in it. In race_auv/odom_graph
+        # use /dock_fuser/path_graph (the same track, stamped in that frame).
+        DeclareLaunchArgument('fixed_frame', default_value='race_auv/odom',
+                              description='RViz fixed frame (race_auv/odom_graph: graph-corrected)'),
+        DeclareLaunchArgument('graph_path', default_value='/dock_fuser/path',
+                              description='graph track topic (/dock_fuser/path_graph with '
+                                          'fixed_frame:=race_auv/odom_graph)'),
         OpaqueFunction(function=_rviz),
     ])

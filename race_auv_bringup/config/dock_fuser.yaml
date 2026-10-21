@@ -26,10 +26,24 @@ dock_fuser:
     dock_frame: race_station/dock_point
     publish_station_static_tf: true
     dock_pose_topic: /race_auv/dock_point/pose
+    # Drop-in for the old apriltag_fuser (race_docking_mission listens here):
+    # PoseStamped, dock_point in base_link, published only on keyframes that
+    # added a tag factor, so it keeps the old "a tag was just detected"
+    # meaning (the mission's debounce / tag-lost timeouts count messages).
+    # The continuous estimate, also while no tag is seen, is the TF
+    # race_auv/base_link -> race_station/dock_point and dock_pose_topic.
+    # Do not run the old apriltag_fuser at the same time (same topic, and a
+    # second parent for race_station/dock_point): fuser.enabled in apriltag.yaml.
+    compat_pose_topic: /race_station/dock_point/pose
+    # TF race_auv/odom -> race_auv/odom_graph (E_k X_k^-1): base_link sits at
+    # the graph's pose in it and the station stays fixed. Display frame for
+    # Foxglove / RViz; the EKF's race_auv/odom drifts during a DVL dropout.
+    corrected_frame: race_auv/odom_graph
     # Live-viewing topics (Foxglove / RViz, see race_auv_factorgraph/ros/node.py):
     # ~/auv_pose, ~/odometry, ~/station_pose, ~/keyframe (per keyframe) and
     # ~/path, ~/ekf_path (the last path_length keyframes of the graph and the
-    # EKF, re-published at path_rate; ~250 kB each per message at 3000).
+    # EKF, re-published at path_rate; ~250 kB each per message at 3000), and
+    # ~/path_graph (the graph's path in corrected_frame).
     publish_debug: true
     path_rate: 1.0
     path_length: 3000
@@ -39,11 +53,22 @@ dock_fuser:
     station_urdf_package: race_station_description
     station_urdf_file: urdf/base.urdf
 
-    # One camera: each of its detector messages (tags or not) is one keyframe,
-    # so the detector's publish_rate (5 Hz) is the keyframe rate. Its topics
-    # and frame follow from the name: /cam_front/apriltag_detection/tags,
-    # .../camera_info, frame race_auv/cam_front.
-    camera_names: [cam_front]
+    # Cameras. Each keyframe_camera detector message (tags or not) is one
+    # keyframe, so its detector's publish_rate (5 Hz) is the keyframe rate.
+    # Every other enabled camera is attached: its detections with tags become
+    # factors on the latest keyframe (through the EKF motion since then) and
+    # never create keyframes (core/frontend/scheduler.py). Topics and frame
+    # follow from the name: /<cam>/apriltag_detection/tags, .../camera_info,
+    # frame race_auv/<cam>. Which tags each camera reports is set in
+    # tag_factorgraph_detector.yaml (camera_tag_ids).
+    camera_names: [cam_front, cam_down]
+    keyframe_camera: cam_front
+    cameras:
+      cam_down:
+        # Off until a tank run with cam_down detections (bottom tags 176/185)
+        # shows it helps: replay that bag with analyze_run and
+        # dock_fuser_overrides {cameras.cam_down.enabled: true} first.
+        enabled: false
 
     estimator:
       # DVL dropout handling (core/frontend/dvl_monitor.py). Extra odometry
@@ -54,4 +79,7 @@ dock_fuser:
       dvl_relock_margin: 0.3    # s after re-lock still counted as the snap
       # Fixed-lag smoother: variables older than this are marginalized (§9).
       smoother_lag: 30.0
+      # Attached camera (cam_down): dropped if more than this after its
+      # anchor keyframe (cam_front late or silent).
+      attach_max_dt: 0.5
       sigma_px: 1.0

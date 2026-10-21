@@ -1,6 +1,7 @@
 # RViz for the factor-graph docking pipeline, topside view of a vehicle run.
-# Template: bringup_rviz_factorgraph.launch.py replaces the @...@ image topics
-# with its launch arguments and starts rviz2 on the result.
+# Template: bringup_rviz_factorgraph.launch.py replaces the @...@ image topics,
+# the fixed frame and the graph path topic with its launch arguments and
+# starts rviz2 on the result.
 #
 # Layout (1920x1080; camera column ~640 px, 3D view ~1000 px):
 #   left    Displays (Views tabbed behind it)
@@ -38,7 +39,7 @@ Visualization Manager:
       Name: graph X_k (/dock_fuser/path)
       Enabled: true
       Topic:
-        Value: /dock_fuser/path
+        Value: @GRAPH_PATH@
         Depth: 5
         Durability Policy: Volatile
         History Policy: Keep Last
@@ -114,7 +115,7 @@ Visualization Manager:
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
-    Fixed Frame: race_auv/odom
+    Fixed Frame: @FIXED_FRAME@
     Frame Rate: 30
   Name: root
   Tools:
