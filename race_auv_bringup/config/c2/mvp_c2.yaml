@@ -17,7 +17,7 @@
   ros__parameters:
     dccl_tx_interval: 1.0
     dccl_rx_interval: 0.2
-    helm_state_list: ['start', 'kill', 'teleop', 'teleop_twist', 'survey'] #this has to match the helm
+    helm_state_list: ['start', 'kill', 'teleop', 'teleop_twist', 'survey', 'mapping', 'docking'] #this has to match the helm
     launch_packages: ['race_auv_bringup', 'race_auv_bringup', 'race_auv_bringup', 'race_auv_bringup',  'race_auv_bringup']
     launch_files: ['bringup_utilities', 'bringup_sensors', bringup_localization, 'bringup_mvp', 'bringup_thrusters']
     gpio_devices: ['jetson', 'dvl', 'payload_24v', 'optical_modem']  # this needs to match the gpio manager yaml
@@ -27,7 +27,7 @@
   ros__parameters:
     dccl_tx_interval: 0.5
     dccl_rx_interval: 0.5
-    helm_state_list: ['start', 'kill', 'teleop', 'teleop_twist', 'survey']  #this has to match the helm
+    helm_state_list: ['start', 'kill', 'teleop', 'teleop_twist', 'survey', 'mapping', 'docking']  #this has to match the helm
     launch_packages: ['race_auv_bringup', 'race_auv_bringup', 'race_auv_bringup', 'race_auv_bringup',  'race_auv_bringup']
     launch_files: ['bringup_utilities', 'bringup_sensors', bringup_localization, 'bringup_mvp', 'bringup_thrusters']
     gpio_devices: ['jetson', 'dvl', 'payload_24v', 'optical_modem']  # this needs to match the gpio manager yaml

@@ -1,137 +1,343 @@
-"""Launch the AprilTag detector nodes described in config/apriltag.yaml.
+# """Launch the AprilTag detector nodes described in config/apriltag.yaml.
 
-Assumes the cameras are already running -- see multi_camera.launch.py,
-which publishes:
+# Assumes the cameras are already running -- see multi_camera.launch.py,
+# which publishes:
 
-    /race/stellar1/image/compressed   -> cam_down
-    /race/stellar2/image/compressed   -> cam_front
+#     /race/stellar1/image/compressed   -> cam_down
+#     /race/stellar2/image/compressed   -> cam_front
 
-Each enabled entry in apriltag.yaml's ``cameras:`` list gets one
-``race_auv_camera_pkg/apriltag_detector_node`` here. See
-bringup_camera_perception.launch.py for the combined bringup.
+# Each enabled entry in apriltag.yaml's ``cameras:`` list gets one
+# ``race_auv_camera_pkg/apriltag_detector_node`` here. See
+# bringup_camera_perception.launch.py for the combined bringup.
 
-Sequential spawn (startup-load safety)
---------------------------------------
-Detectors are spawned one at a time, in YAML order, with a fixed delay
-between consecutive spawns:
+# Sequential spawn (startup-load safety)
+# --------------------------------------
+# Detectors are spawned one at a time, in YAML order, with a fixed delay
+# between consecutive spawns:
 
-    t = 0 s          detector 0     (first enabled cameras: entry)
-    t = 2 s          detector 1
-    t = 4 s          detector 2
-    ...
+#     t = 0 s          detector 0     (first enabled cameras: entry)
+#     t = 2 s          detector 1
+#     t = 4 s          detector 2
+#     ...
 
-Spacing the spawns keeps each node's OpenCV / CUDA context setup and
-first-frame burst from hitting the CPU all at once. The delay is
-``_INTER_DETECTOR_DELAY_S``; tune in one place if a different host
-needs more or less.
+# Spacing the spawns keeps each node's OpenCV / CUDA context setup and
+# first-frame burst from hitting the CPU all at once. The delay is
+# ``_INTER_DETECTOR_DELAY_S``; tune in one place if a different host
+# needs more or less.
+# """
+
+# import json
+# import os
+
+# import yaml
+# from ament_index_python.packages import get_package_share_directory
+# from launch import LaunchDescription
+# from launch.actions import TimerAction
+# from launch_ros.actions import Node
+
+
+# # Delay between consecutive detector spawns, in seconds.
+# # 2 s is enough on Jetson Orin to keep detector startups from piling up.
+# _INTER_DETECTOR_DELAY_S = 3.0
+
+
+# def generate_launch_description():
+#     bringup_share = get_package_share_directory('race_auv_bringup')
+#     config_path = os.path.join(bringup_share, 'config', 'apriltag.yaml')
+
+#     with open(config_path, 'r') as f:
+#         cfg = (yaml.safe_load(f) or {}).get('apriltag', {}) or {}
+#     detector_defaults = cfg.get('detector_defaults', {}) or {}
+
+#     detector_nodes = []
+#     for cam in cfg.get('cameras', []) or []:
+#         if not cam.get('enabled', True):
+#             continue
+
+#         cam_name = str(cam.get('name', '')).strip()
+#         namespace = str(
+#             cam.get('detector_namespace', cam.get('namespace', '')) or ''
+#         ).strip('/')
+#         intrinsics = cam.get('intrinsics', {}) or {}
+#         tags = cam.get('tags')
+#         tags_override = json.dumps(list(tags)) if tags else '[]'
+
+#         node = Node(
+#             package='race_auv_camera_pkg',
+#             executable='apriltag_detector_node',
+#             name=f'apriltag_detector_{cam_name}',
+#             namespace=namespace,
+#             output='screen',
+#             parameters=[{
+#                 'config_yaml': config_path,
+#                 'image_transport': str(cam.get('image_transport', 'raw')),
+#                 'image_topic': cam['image_topic'],
+#                 'info_topic': str(cam.get('info_topic', '') or ''),
+#                 'camera_frame': str(cam.get('camera_frame', '') or ''),
+#                 'output_image_topic': cam.get(
+#                     'output_image_topic', 'apriltag_detection/image'
+#                 ),
+#                 'output_detections_topic': cam.get(
+#                     'output_detections_topic', 'apriltag_detection/detections3d'
+#                 ),
+#                 'publish_rate': float(
+#                     cam.get('publish_rate', detector_defaults.get('publish_rate', 5.0))
+#                 ),
+#                 'process_scale': float(cam.get('process_scale', 1.0)),
+#                 'jpeg_quality': int(cam.get('jpeg_quality', 80)),
+#                 'min_edge_dist': int(
+#                     cam.get('min_edge_dist', detector_defaults.get('min_edge_dist', 10))
+#                 ),
+#                 'detector_backend': str(
+#                     cam.get('detector_backend',
+#                             detector_defaults.get('detector_backend', 'python'))
+#                 ).lower(),
+#                 'image_pipeline': str(
+#                     cam.get('image_pipeline',
+#                             detector_defaults.get('image_pipeline', 'cpu'))
+#                 ).lower(),
+#                 'gpu_rectify_interval': int(
+#                     cam.get('gpu_rectify_interval',
+#                             detector_defaults.get('gpu_rectify_interval', 4))
+#                 ),
+#                 'cuda_tile_size': int(
+#                     cam.get('cuda_tile_size', detector_defaults.get('cuda_tile_size', 4))
+#                 ),
+#                 'cuda_nominal_size': float(
+#                     cam.get('cuda_nominal_size',
+#                             detector_defaults.get('cuda_nominal_size', 0.125))
+#                 ),
+#                 'cuda_max_tags': int(
+#                     cam.get('cuda_max_tags', detector_defaults.get('cuda_max_tags', 64))
+#                 ),
+#                 'tags_override': tags_override,
+#                 'intrinsics.fx': float(intrinsics.get('fx', 0.0)),
+#                 'intrinsics.fy': float(intrinsics.get('fy', 0.0)),
+#                 'intrinsics.cx': float(intrinsics.get('cx', 0.0)),
+#                 'intrinsics.cy': float(intrinsics.get('cy', 0.0)),
+#                 'intrinsics.width': int(intrinsics.get('width', 0)),
+#                 'intrinsics.height': int(intrinsics.get('height', 0)),
+#                 'intrinsics.distortion': [
+#                     float(v) for v in intrinsics.get('distortion', [0.0] * 5)
+#                 ],
+#                 'intrinsics.fisheye': bool(intrinsics.get('fisheye', False)),
+#             }],
+#         )
+
+#         # Spawn detectors one at a time. `len(detector_nodes)` counts
+#         # only already-appended (enabled) detectors, so the first one
+#         # starts at t=0 and each subsequent one is delayed by one more
+#         # `_INTER_DETECTOR_DELAY_S` tick.
+#         delay_s = _INTER_DETECTOR_DELAY_S * len(detector_nodes)
+#         if delay_s > 0.0:
+#             detector_nodes.append(TimerAction(period=delay_s, actions=[node]))
+#         else:
+#             detector_nodes.append(node)
+
+#     return LaunchDescription(detector_nodes)
+
+"""Launch the full AprilTag pipeline from a single YAML file.
+
+Reads ``config/simulation/apriltag.yaml`` (in race_auv_bringup) and starts:
+
+* One ``race_auv_camera_pkg/apriltag_detector_node`` per enabled camera in ``cameras:``.
+* One ``race_auv_camera_pkg/apriltag_fuser_node`` if ``fuser.enabled`` is true.
+
+The bringup launch file only needs to include this launch file with no
+arguments; all per-camera topics, namespaces, intrinsics, and fuser settings
+are read from the YAML.
+
+The detector publishes per-tag ``vision_msgs/Detection3DArray`` topics
+plus annotated images; the fuser fuses those into a single ``dock_point``
+TF for downstream docking control.
 """
 
 import json
 import os
+from typing import Any, Dict, List
 
 import yaml
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import TimerAction
+from launch.actions import DeclareLaunchArgument, OpaqueFunction
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
-# Delay between consecutive detector spawns, in seconds.
-# 2 s is enough on Jetson Orin to keep detector startups from piling up.
-_INTER_DETECTOR_DELAY_S = 3.0
+def _load_yaml(path: str) -> Dict[str, Any]:
+    with open(path, "r") as f:
+        data = yaml.safe_load(f) or {}
+    return data.get("apriltag", data) or {}
 
 
-def generate_launch_description():
-    bringup_share = get_package_share_directory('race_auv_bringup')
-    config_path = os.path.join(bringup_share, 'config', 'apriltag.yaml')
+def _join(ns: str, name: str) -> str:
+    if not name:
+        return ""
+    if name.startswith("/"):
+        return name
+    if ns:
+        return f"/{ns}/{name}"
+    return f"/{name}"
 
-    with open(config_path, 'r') as f:
-        cfg = (yaml.safe_load(f) or {}).get('apriltag', {}) or {}
-    detector_defaults = cfg.get('detector_defaults', {}) or {}
 
-    detector_nodes = []
-    for cam in cfg.get('cameras', []) or []:
-        if not cam.get('enabled', True):
+def _build_nodes(context, *args, **kwargs):
+    config_path = LaunchConfiguration("config").perform(context)
+    cfg = _load_yaml(config_path)
+    detector_defaults = cfg.get("detector_defaults", {}) or {}
+    fuser_cfg = cfg.get("fuser", {}) or {}
+
+    actions = []
+    detection_topics: List[str] = []
+
+    for cam in cfg.get("cameras", []) or []:
+        if not cam.get("enabled", True):
             continue
-
-        cam_name = str(cam.get('name', '')).strip()
-        namespace = str(
-            cam.get('detector_namespace', cam.get('namespace', '')) or ''
-        ).strip('/')
-        intrinsics = cam.get('intrinsics', {}) or {}
-        tags = cam.get('tags')
-        tags_override = json.dumps(list(tags)) if tags else '[]'
-
-        node = Node(
-            package='race_auv_camera_pkg',
-            executable='apriltag_detector_node',
-            name=f'apriltag_detector_{cam_name}',
-            namespace=namespace,
-            output='screen',
-            parameters=[{
-                'config_yaml': config_path,
-                'image_transport': str(cam.get('image_transport', 'raw')),
-                'image_topic': cam['image_topic'],
-                'info_topic': str(cam.get('info_topic', '') or ''),
-                'camera_frame': str(cam.get('camera_frame', '') or ''),
-                'output_image_topic': cam.get(
-                    'output_image_topic', 'apriltag_detection/image'
-                ),
-                'output_detections_topic': cam.get(
-                    'output_detections_topic', 'apriltag_detection/detections3d'
-                ),
-                'publish_rate': float(
-                    cam.get('publish_rate', detector_defaults.get('publish_rate', 5.0))
-                ),
-                'process_scale': float(cam.get('process_scale', 1.0)),
-                'jpeg_quality': int(cam.get('jpeg_quality', 80)),
-                'min_edge_dist': int(
-                    cam.get('min_edge_dist', detector_defaults.get('min_edge_dist', 10))
-                ),
-                'detector_backend': str(
-                    cam.get('detector_backend',
-                            detector_defaults.get('detector_backend', 'python'))
-                ).lower(),
-                'image_pipeline': str(
-                    cam.get('image_pipeline',
-                            detector_defaults.get('image_pipeline', 'cpu'))
-                ).lower(),
-                'gpu_rectify_interval': int(
-                    cam.get('gpu_rectify_interval',
-                            detector_defaults.get('gpu_rectify_interval', 4))
-                ),
-                'cuda_tile_size': int(
-                    cam.get('cuda_tile_size', detector_defaults.get('cuda_tile_size', 4))
-                ),
-                'cuda_nominal_size': float(
-                    cam.get('cuda_nominal_size',
-                            detector_defaults.get('cuda_nominal_size', 0.125))
-                ),
-                'cuda_max_tags': int(
-                    cam.get('cuda_max_tags', detector_defaults.get('cuda_max_tags', 64))
-                ),
-                'tags_override': tags_override,
-                'intrinsics.fx': float(intrinsics.get('fx', 0.0)),
-                'intrinsics.fy': float(intrinsics.get('fy', 0.0)),
-                'intrinsics.cx': float(intrinsics.get('cx', 0.0)),
-                'intrinsics.cy': float(intrinsics.get('cy', 0.0)),
-                'intrinsics.width': int(intrinsics.get('width', 0)),
-                'intrinsics.height': int(intrinsics.get('height', 0)),
-                'intrinsics.distortion': [
-                    float(v) for v in intrinsics.get('distortion', [0.0] * 5)
-                ],
-                'intrinsics.fisheye': bool(intrinsics.get('fisheye', False)),
-            }],
+        name = str(cam.get("name", "")).strip()
+        if not name:
+            continue
+        ns = str(cam.get("namespace", "") or "").strip("/")
+        image_topic = cam.get("image_topic")
+        if not image_topic:
+            raise RuntimeError(
+                f"camera '{name}' in {config_path} is missing 'image_topic'"
+            )
+        image_transport = str(cam.get("image_transport", "raw")).lower()
+        info_topic = cam.get("info_topic", "") or ""
+        camera_frame = cam.get("camera_frame", "") or ""
+        output_image_topic = cam.get(
+            "output_image_topic", "apriltag_detection/image"
+        )
+        output_detections_topic = cam.get(
+            "output_detections_topic", "apriltag_detection/detections3d"
+        )
+        publish_rate = float(
+            cam.get("publish_rate", detector_defaults.get("publish_rate", 5.0))
+        )
+        process_scale = float(cam.get("process_scale", 1.0))
+        jpeg_quality = int(cam.get("jpeg_quality", 80))
+        min_edge_dist = int(
+            cam.get("min_edge_dist", detector_defaults.get("min_edge_dist", 10))
+        )
+        detector_backend = str(
+            cam.get("detector_backend",
+                    detector_defaults.get("detector_backend", "python"))
+        ).lower()
+        cuda_tile_size = int(
+            cam.get("cuda_tile_size", detector_defaults.get("cuda_tile_size", 4))
+        )
+        cuda_nominal_size = float(
+            cam.get("cuda_nominal_size",
+                    detector_defaults.get("cuda_nominal_size", 0.125))
+        )
+        cuda_max_tags = int(
+            cam.get("cuda_max_tags", detector_defaults.get("cuda_max_tags", 64))
+        )
+        image_pipeline = str(
+            cam.get("image_pipeline",
+                    detector_defaults.get("image_pipeline", "cpu"))
+        ).lower()
+        gpu_rectify_interval = int(
+            cam.get("gpu_rectify_interval",
+                    detector_defaults.get("gpu_rectify_interval", 4))
         )
 
-        # Spawn detectors one at a time. `len(detector_nodes)` counts
-        # only already-appended (enabled) detectors, so the first one
-        # starts at t=0 and each subsequent one is delayed by one more
-        # `_INTER_DETECTOR_DELAY_S` tick.
-        delay_s = _INTER_DETECTOR_DELAY_S * len(detector_nodes)
-        if delay_s > 0.0:
-            detector_nodes.append(TimerAction(period=delay_s, actions=[node]))
-        else:
-            detector_nodes.append(node)
+        intrinsics = cam.get("intrinsics", {}) or {}
 
-    return LaunchDescription(detector_nodes)
+        # Per-camera tag override: if the camera entry has its own `tags:`
+        # list, JSON-encode it as `tags_override` so the detector builds only
+        # the (family, size) groups it can actually see. Otherwise the global
+        # YAML `tags:` list (in `apriltag.tags`) is used as a fallback.
+        cam_tags = cam.get("tags", None)
+        if cam_tags is None:
+            tags_override_json = "[]"
+        else:
+            tags_override_json = json.dumps(list(cam_tags))
+
+        actions.append(
+            Node(
+                package="race_auv_camera_pkg",
+                executable="apriltag_detector_node",
+                name=f"apriltag_detector_{name}",
+                namespace=ns,
+                output="screen",
+                parameters=[{
+                    "config_yaml": config_path,
+                    "image_transport": image_transport,
+                    "image_topic": image_topic,
+                    "info_topic": info_topic,
+                    "camera_frame": camera_frame,
+                    "output_image_topic": output_image_topic,
+                    "output_detections_topic": output_detections_topic,
+                    "publish_rate": publish_rate,
+                    "process_scale": process_scale,
+                    "jpeg_quality": jpeg_quality,
+                    "min_edge_dist": min_edge_dist,
+                    "detector_backend": detector_backend,
+                    "image_pipeline": image_pipeline,
+                    "gpu_rectify_interval": gpu_rectify_interval,
+                    "cuda_tile_size": cuda_tile_size,
+                    "cuda_nominal_size": cuda_nominal_size,
+                    "cuda_max_tags": cuda_max_tags,
+                    "tags_override": tags_override_json,
+                    "intrinsics.fx": float(intrinsics.get("fx", 0.0)),
+                    "intrinsics.fy": float(intrinsics.get("fy", 0.0)),
+                    "intrinsics.cx": float(intrinsics.get("cx", 0.0)),
+                    "intrinsics.cy": float(intrinsics.get("cy", 0.0)),
+                    "intrinsics.width": int(intrinsics.get("width", 0)),
+                    "intrinsics.height": int(intrinsics.get("height", 0)),
+                    "intrinsics.distortion": list(
+                        intrinsics.get("distortion", [0.0] * 5)
+                    ),
+                    "intrinsics.fisheye": bool(intrinsics.get("fisheye", False)),
+                }],
+            )
+        )
+        detection_topics.append(_join(ns, output_detections_topic))
+
+    if fuser_cfg.get("enabled", True):
+        actions.append(
+            Node(
+                package="race_auv_camera_pkg",
+                executable="apriltag_fuser_node",
+                name="apriltag_fuser",
+                output="screen",
+                parameters=[{
+                    "config_yaml": config_path,
+                    "reference_frame": fuser_cfg.get("reference_frame", "base_link"),
+                    "output_frame": fuser_cfg.get("output_frame", "dock_point"),
+                    "publish_rate": float(fuser_cfg.get("publish_rate", 5.0)),
+                    "min_pairs": int(fuser_cfg.get("min_pairs", 3)),
+                    "detection_max_age": float(
+                        fuser_cfg.get("detection_max_age", 0.5)
+                    ),
+                    "tf_timeout": float(fuser_cfg.get("tf_timeout", 0.1)),
+                    "detections_topics": detection_topics,
+                    "output_pose_topic": fuser_cfg.get(
+                        "output_pose_topic", "dock_point/pose"
+                    ),
+                }],
+            )
+        )
+
+    return actions
+
+
+def generate_launch_description() -> LaunchDescription:
+    pkg_share = get_package_share_directory("race_auv_bringup")
+    default_config = os.path.join(
+        pkg_share, "config", "apriltag.yaml"
+    )
+
+    config_arg = DeclareLaunchArgument(
+        "config",
+        default_value=default_config,
+        description=(
+            "Path to apriltag.yaml. Defines cameras, detector settings, "
+            "URDF location, and the fuser block."
+        ),
+    )
+
+    return LaunchDescription([
+        config_arg,
+        OpaqueFunction(function=_build_nodes),
+    ])
